@@ -419,7 +419,7 @@ def logout_button():
 def fetch_athletes():
     try:
         data = (
-            supabase.table("athletes")
+            write_client().table("athletes")
             .select("*")
             .order("id", desc=True)
             .execute()
@@ -433,7 +433,7 @@ def fetch_athletes():
 def fetch_blocks():
     try:
         data = (
-            supabase.table("blocks")
+            write_client().table("blocks")
             .select("id,block_code,block_name,goal,training_element,description")
             .order("id", desc=False)
             .execute()
@@ -447,7 +447,7 @@ def fetch_blocks():
 def fetch_block_sections(block_id):
     try:
         data = (
-            supabase.table("block_sections")
+            write_client().table("block_sections")
             .select("id,block_id,section_name,order_num")
             .eq("block_id", block_id)
             .order("order_num", desc=False)
@@ -462,7 +462,7 @@ def fetch_block_sections(block_id):
 def fetch_block_exercises(block_id):
     try:
         data = (
-            supabase.table("block_exercises")
+            write_client().table("block_exercises")
             .select("id,block_id,section_id,exercise_name,sets,reps_or_time,equipment,intensity,weight,rest,video_url,order_num,notes")
             .eq("block_id", block_id)
             .order("order_num", desc=False)
@@ -477,7 +477,7 @@ def fetch_block_exercises(block_id):
 def fetch_athlete_blocks(athlete_id):
     try:
         data = (
-            supabase.table("athlete_blocks")
+            write_client().table("athlete_blocks")
             .select("id,athlete_id,block_id,week_num,day_num,training_category,notes,created_at")
             .eq("athlete_id", athlete_id)
             .order("id", desc=True)
@@ -2076,18 +2076,29 @@ def render_delete_athlete_block_assignment_confirmation(assignment_id, block_nam
 def find_logged_in_athlete(athletes_df):
     user_id = st.session_state.get("auth_user_id")
     email = st.session_state.get("auth_email")
-
-    if "user_id" in athletes_df.columns and user_id:
-        user_rows = athletes_df[athletes_df["user_id"] == user_id]
-        if not user_rows.empty:
-            return user_rows.iloc[0].to_dict()
+    email_rows = pd.DataFrame()
 
     if "email" in athletes_df.columns and email:
         email_rows = athletes_df[
             athletes_df["email"].fillna("").str.lower() == email.lower()
         ]
-        if not email_rows.empty:
-            return email_rows.iloc[0].to_dict()
+
+    if "user_id" in athletes_df.columns and user_id:
+        user_rows = athletes_df[
+            athletes_df["user_id"].fillna("").astype(str) == str(user_id)
+        ]
+        if not user_rows.empty:
+            matched_by_user = user_rows.iloc[0].to_dict()
+            athlete_blocks_df, athlete_blocks_error = fetch_athlete_blocks(matched_by_user["id"])
+            if athlete_blocks_error or not athlete_blocks_df.empty or email_rows.empty:
+                return matched_by_user
+
+    if not email_rows.empty:
+        for _, athlete_row in email_rows.iterrows():
+            athlete_blocks_df, athlete_blocks_error = fetch_athlete_blocks(athlete_row["id"])
+            if not athlete_blocks_error and not athlete_blocks_df.empty:
+                return athlete_row.to_dict()
+        return email_rows.iloc[0].to_dict()
 
     return None
 
