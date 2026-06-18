@@ -87,6 +87,79 @@ ATHLETE_BLOCK_EXERCISE_COLUMNS = [
 ]
 
 
+def inject_responsive_styles():
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            max-width: 1180px;
+            padding-top: 3rem;
+            padding-bottom: 3rem;
+        }
+
+        div[data-testid="stDataFrame"] {
+            overflow-x: auto;
+        }
+
+        div[data-testid="stExpander"] details {
+            overflow-wrap: anywhere;
+        }
+
+        @media (max-width: 768px) {
+            .block-container {
+                padding: 1rem 0.85rem 2rem;
+            }
+
+            h1 {
+                font-size: 2.1rem !important;
+                line-height: 1.15 !important;
+            }
+
+            h2 {
+                font-size: 1.65rem !important;
+            }
+
+            h3 {
+                font-size: 1.35rem !important;
+            }
+
+            div[data-testid="stHorizontalBlock"] {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+
+            div[data-testid="column"] {
+                flex: 1 1 100% !important;
+                min-width: 100% !important;
+            }
+
+            div[data-testid="stButton"] > button,
+            div[data-testid="stFormSubmitButton"] > button {
+                width: 100%;
+                min-height: 2.75rem;
+            }
+
+            div[data-testid="stExpander"] summary {
+                line-height: 1.35;
+            }
+
+            div[data-testid="stDataFrame"],
+            div[data-testid="stTable"] {
+                max-width: 100%;
+                overflow-x: auto;
+            }
+
+            div[data-testid="stDataFrame"] [role="gridcell"],
+            div[data-testid="stDataFrame"] [role="columnheader"] {
+                white-space: normal !important;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def write_client():
     return admin_supabase or supabase
 
@@ -1447,42 +1520,37 @@ def render_new_athlete_form():
 
 
 def render_clickable_athlete_list(athletes_df):
-    header_cols = st.columns([1.7, 2, 1.1, 0.9, 0.9, 1.4, 0.9])
-    header_cols[0].markdown("**姓名**")
-    header_cols[1].markdown("**Email**")
-    header_cols[2].markdown("**運動項目**")
-    header_cols[3].markdown("**程度**")
-    header_cols[4].markdown("**課表**")
-    header_cols[5].markdown("**臨時密碼**")
-    header_cols[6].markdown("**刪除**")
-
     for athlete in athletes_df.to_dict("records"):
-        row_cols = st.columns([1.7, 2, 1.1, 0.9, 0.9, 1.4, 0.9])
-        row_cols[0].write(athlete.get("name") or "-")
-        row_cols[1].write(athlete.get("email") or "-")
-        row_cols[2].write(athlete.get("sport") or "-")
-        row_cols[3].write(athlete.get("level") or "-")
-        if row_cols[4].button("查看", key=f"open_athlete_{athlete['id']}"):
-            st.session_state["selected_athlete_id"] = athlete["id"]
-            st.rerun()
-        if row_cols[5].button("重設", key=f"reset_password_from_list_{athlete['id']}"):
-            st.session_state["pending_reset_athlete_id"] = athlete["id"]
-        if row_cols[6].button("刪除", key=f"ask_delete_athlete_{athlete['id']}"):
-            st.session_state["pending_delete_athlete_id"] = athlete["id"]
+        with st.container(border=True):
+            st.markdown(f"### {athlete.get('name') or '未命名學員'}")
 
-        if st.session_state.get("pending_reset_athlete_id") == athlete["id"]:
-            render_reset_password_confirmation(athlete)
+            info_cols = st.columns([2, 1, 1])
+            info_cols[0].markdown(f"**Email：** {athlete.get('email') or '-'}")
+            info_cols[1].markdown(f"**運動項目：** {athlete.get('sport') or '-'}")
+            info_cols[2].markdown(f"**程度：** {athlete.get('level') or '-'}")
 
-        if st.session_state.get("pending_delete_athlete_id") == athlete["id"]:
-            render_delete_athlete_confirmation(athlete)
+            action_cols = st.columns(3)
+            if action_cols[0].button("查看課表", key=f"open_athlete_{athlete['id']}", use_container_width=True):
+                st.session_state["selected_athlete_id"] = athlete["id"]
+                st.rerun()
+            if action_cols[1].button("重設臨時密碼", key=f"reset_password_from_list_{athlete['id']}", use_container_width=True):
+                st.session_state["pending_reset_athlete_id"] = athlete["id"]
+            if action_cols[2].button("刪除學員", key=f"ask_delete_athlete_{athlete['id']}", use_container_width=True):
+                st.session_state["pending_delete_athlete_id"] = athlete["id"]
 
-        if st.session_state.get("last_reset_temp_athlete_id") == athlete["id"]:
-            render_temp_password_card(
-                "last_reset_temp_password",
-                "last_reset_temp_email",
-                f"close_last_reset_temp_password_{athlete['id']}",
-                extra_keys=["last_reset_temp_athlete_id"],
-            )
+            if st.session_state.get("pending_reset_athlete_id") == athlete["id"]:
+                render_reset_password_confirmation(athlete)
+
+            if st.session_state.get("pending_delete_athlete_id") == athlete["id"]:
+                render_delete_athlete_confirmation(athlete)
+
+            if st.session_state.get("last_reset_temp_athlete_id") == athlete["id"]:
+                render_temp_password_card(
+                    "last_reset_temp_password",
+                    "last_reset_temp_email",
+                    f"close_last_reset_temp_password_{athlete['id']}",
+                    extra_keys=["last_reset_temp_athlete_id"],
+                )
 
 
 def reset_temp_password_from_list(athlete):
@@ -2412,6 +2480,8 @@ def render_change_password_section():
 
 
 def main():
+    inject_responsive_styles()
+
     if password_recovery_page():
         return
 
