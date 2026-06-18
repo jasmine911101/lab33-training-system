@@ -1,5 +1,6 @@
 import secrets
 import string
+from datetime import date
 
 import pandas as pd
 import streamlit as st
@@ -36,6 +37,7 @@ TRAINING_CATEGORIES = [
     "有氧/無氧訓練",
     "專項訓練",
     "恢復/其他訓練",
+    "其他",
 ]
 
 BLOCK_SECTION_NAMES = [
@@ -364,6 +366,55 @@ def has_value(value):
     return value is not None and not pd.isna(value) and value != ""
 
 
+def parse_date_value(value):
+    if not has_value(value):
+        return date.today()
+    try:
+        return pd.to_datetime(value).date()
+    except Exception:
+        return date.today()
+
+
+def date_to_iso(value):
+    if not has_value(value):
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def normalize_date_range(value):
+    if isinstance(value, (tuple, list)):
+        start_date = value[0] if len(value) >= 1 else date.today()
+        end_date = value[1] if len(value) >= 2 else start_date
+    else:
+        start_date = value
+        end_date = value
+
+    if not has_value(start_date):
+        start_date = date.today()
+    if not has_value(end_date):
+        end_date = start_date
+
+    return start_date, end_date
+
+
+def date_range_label(row):
+    start_date = row.get("start_date")
+    end_date = row.get("end_date")
+
+    if not has_value(start_date):
+        start_date = row.get("scheduled_date")
+    if not has_value(end_date):
+        end_date = start_date
+
+    if not has_value(start_date):
+        return ""
+    if not has_value(end_date) or str(start_date) == str(end_date):
+        return str(start_date)
+    return f"{start_date} ~ {end_date}"
+
+
 def delete_athlete(athlete_id, user_id=None):
     supabase.table("athlete_blocks").delete().eq("athlete_id", athlete_id).execute()
     supabase.table("athletes").delete().eq("id", athlete_id).execute()
@@ -478,7 +529,7 @@ def fetch_athlete_blocks(athlete_id):
     try:
         data = (
             write_client().table("athlete_blocks")
-            .select("id,athlete_id,block_id,week_num,day_num,training_category,notes,created_at")
+            .select("id,athlete_id,block_id,event_name,cycle_goal,scheduled_date,start_date,end_date,week_num,day_num,training_category,notes,created_at")
             .eq("athlete_id", athlete_id)
             .order("id", desc=True)
             .execute()
@@ -519,22 +570,6 @@ def create_athlete(name, email, sport, level, user_id=None, must_change_password
     return (
         supabase.table("athletes")
         .insert(payload)
-        .execute()
-    )
-
-
-def create_block(block_code, block_name, goal, training_element, description):
-    return (
-        supabase.table("blocks")
-        .insert(
-            {
-                "block_code": block_code,
-                "block_name": block_name,
-                "goal": goal,
-                "training_element": training_element,
-                "description": description,
-            }
-        )
         .execute()
     )
 
@@ -874,11 +909,6 @@ def parse_block_sheet(sheet, fallback_name):
     }
 
 
-def parse_block_excel(uploaded_file):
-    workbook = load_workbook(uploaded_file, data_only=True)
-    return parse_block_sheet(workbook.active, uploaded_file.name.rsplit(".", 1)[0])
-
-
 def parse_block_workbook(uploaded_file):
     workbook = load_workbook(uploaded_file, data_only=True)
     parsed_blocks = []
@@ -935,13 +965,29 @@ def create_block_from_excel(parsed_block, block_code, description):
     return block_id
 
 
-def assign_block_to_athlete(athlete_id, block_id, week_num, day_num, training_category, notes):
+def assign_block_to_athlete(
+    athlete_id,
+    block_id,
+    event_name,
+    cycle_goal,
+    start_date,
+    end_date,
+    week_num,
+    day_num,
+    training_category,
+    notes,
+):
     response = (
-        supabase.table("athlete_blocks")
+        write_client().table("athlete_blocks")
         .insert(
             {
                 "athlete_id": to_plain_int(athlete_id),
                 "block_id": to_plain_int(block_id),
+                "event_name": event_name,
+                "cycle_goal": cycle_goal,
+                "scheduled_date": date_to_iso(start_date),
+                "start_date": date_to_iso(start_date),
+                "end_date": date_to_iso(end_date),
                 "week_num": to_plain_int(week_num),
                 "day_num": to_plain_int(day_num),
                 "training_category": training_category,
@@ -955,12 +1001,28 @@ def assign_block_to_athlete(athlete_id, block_id, week_num, day_num, training_ca
     return response
 
 
-def update_athlete_block_assignment(assignment_id, block_id, week_num, day_num, training_category, notes):
+def update_athlete_block_assignment(
+    assignment_id,
+    block_id,
+    event_name,
+    cycle_goal,
+    start_date,
+    end_date,
+    week_num,
+    day_num,
+    training_category,
+    notes,
+):
     return (
-        supabase.table("athlete_blocks")
+        write_client().table("athlete_blocks")
         .update(
             {
                 "block_id": to_plain_int(block_id),
+                "event_name": event_name,
+                "cycle_goal": cycle_goal,
+                "scheduled_date": date_to_iso(start_date),
+                "start_date": date_to_iso(start_date),
+                "end_date": date_to_iso(end_date),
                 "week_num": to_plain_int(week_num),
                 "day_num": to_plain_int(day_num),
                 "training_category": training_category,
@@ -978,7 +1040,7 @@ def delete_athlete_block_assignment(assignment_id):
         to_plain_int(assignment_id),
     ).execute()
     return (
-        supabase.table("athlete_blocks")
+        write_client().table("athlete_blocks")
         .delete()
         .eq("id", to_plain_int(assignment_id))
         .execute()
@@ -1216,6 +1278,11 @@ create table if not exists public.athlete_blocks (
   id bigint generated by default as identity primary key,
   athlete_id bigint references public.athletes(id) on delete cascade,
   block_id bigint,
+  event_name text,
+  cycle_goal text,
+  scheduled_date date,
+  start_date date,
+  end_date date,
   week_num integer,
   day_num integer,
   training_category text,
@@ -1223,6 +1290,11 @@ create table if not exists public.athlete_blocks (
   created_at timestamp with time zone default now()
 );
 
+alter table public.athlete_blocks add column if not exists event_name text;
+alter table public.athlete_blocks add column if not exists cycle_goal text;
+alter table public.athlete_blocks add column if not exists scheduled_date date;
+alter table public.athlete_blocks add column if not exists start_date date;
+alter table public.athlete_blocks add column if not exists end_date date;
 alter table public.athlete_blocks add column if not exists training_category text;
 
 create table if not exists public.athlete_block_exercises (
@@ -1281,14 +1353,23 @@ where relname in ('athlete_blocks', 'athlete_block_exercises');
     )
 
 
-def athlete_label(row):
-    name = row.get("name") or f"學員 {row.get('id')}"
-    sport = row.get("sport")
-    return f"{name} - {sport}" if sport else name
-
-
 def block_label(row):
     return row.get("block_name") or row.get("block_code") or f"Block {row.get('id')}"
+
+
+def render_labeled_value(label, value):
+    st.markdown(f"**{label}：** {value or '-'}")
+
+
+def render_event_input(key_prefix, current_value=""):
+    current_value = current_value if has_value(current_value) else ""
+    event_name = st.text_input(
+        "賽事/事件",
+        value=current_value,
+        placeholder="輸入賽事或事件",
+        key=f"{key_prefix}_event",
+    )
+    return event_name.strip()
 
 
 def coach_page():
@@ -1570,7 +1651,6 @@ def blocks_page():
 
     render_manual_block_template_creator()
 
-    st.subheader("板塊列表")
     if blocks_df.empty:
         st.info("目前尚未建立板塊。")
     else:
@@ -1660,14 +1740,12 @@ def render_manual_block_template_creator():
 
 
 def render_blocks_with_details(blocks_df):
-    st.dataframe(blocks_df, use_container_width=True, hide_index=True)
-
     st.markdown("#### 板塊詳細內容")
     for block in blocks_df.to_dict("records"):
         with st.expander(f"{block.get('block_code') or block.get('id')}｜{block.get('block_name') or '未命名板塊'}"):
-            col1, col2, col3, col4 = st.columns([2, 3, 3, 1])
-            col1.write(f"目標：{block.get('goal') or '-'}")
-            col2.write(f"訓練元素：{block.get('training_element') or '-'}")
+            render_labeled_value("目標", block.get("goal"))
+            render_labeled_value("訓練元素", block.get("training_element"))
+            col3, col4 = st.columns([5, 1])
             col3.write(f"描述：{block.get('description') or '-'}")
             if col4.button("刪除", key=f"ask_delete_block_{block['id']}", use_container_width=True):
                 st.session_state["pending_delete_block_id"] = block["id"]
@@ -1706,6 +1784,16 @@ def format_block_exercise_table(exercises_df):
         if column in exercises_df.columns
     ]
     return exercises_df[available_columns].rename(columns=column_labels)
+
+
+def block_exercise_display_column_config():
+    return {
+        "影片連結": st.column_config.LinkColumn(
+            "影片連結",
+            display_text="觀看影片",
+            help="點擊後會開啟影片連結",
+        )
+    }
 
 
 def exercise_editor_column_config():
@@ -1758,6 +1846,7 @@ def render_assignment_detail_tables(assignment_id, block_id, empty_message="這�
             format_block_exercise_table(section_df),
             use_container_width=True,
             hide_index=True,
+            column_config=block_exercise_display_column_config(),
         )
 
 
@@ -1790,6 +1879,7 @@ def render_block_detail_tables(block_id, empty_message="這個板塊目前沒有
             format_block_exercise_table(section_exercises),
             use_container_width=True,
             hide_index=True,
+            column_config=block_exercise_display_column_config(),
         )
 
 
@@ -1850,23 +1940,31 @@ def render_athlete_program_section(selected_athlete):
         }
         block_ids = list(block_by_id.keys())
         with st.form("assign_block_form", clear_on_submit=True):
+            event_name = render_event_input("assign_block")
+            cycle_goal = st.text_area("週期目標", height=80)
+            col1, col2 = st.columns(2)
+            week_num = col1.number_input("Week", min_value=1, value=1)
+            day_num = col2.number_input("Day", min_value=1, value=1)
+            date_range = st.date_input("日期區間", value=(date.today(), date.today()))
+            training_category = st.selectbox("訓練分類", TRAINING_CATEGORIES)
             selected_block_id = st.selectbox(
                 "選擇板塊",
                 block_ids,
                 format_func=lambda block_id: block_label(block_by_id[block_id]),
             )
-            col1, col2 = st.columns(2)
-            week_num = col1.number_input("Week", min_value=1, value=1)
-            day_num = col2.number_input("Day", min_value=1, value=1)
-            training_category = st.selectbox("訓練分類", TRAINING_CATEGORIES)
             notes = st.text_area("備註")
             submitted = st.form_submit_button("加入到這位學員課表", use_container_width=True)
 
         if submitted:
             try:
+                start_date, end_date = normalize_date_range(date_range)
                 assign_block_to_athlete(
                     selected_athlete["id"],
                     selected_block_id,
+                    event_name,
+                    cycle_goal,
+                    start_date,
+                    end_date,
                     week_num,
                     day_num,
                     training_category,
@@ -1877,14 +1975,26 @@ def render_athlete_program_section(selected_athlete):
             except Exception as exc:
                 render_block_assignment_setup_help(exc)
 
-    st.subheader("這位學員已加入的板塊")
     if athlete_blocks_df.empty:
         st.info("這位學員目前還沒有加入任何板塊。")
     else:
-        render_schedule_table(athlete_blocks_df, blocks_df, editable=True)
+        render_schedule_table(
+            athlete_blocks_df,
+            blocks_df,
+            editable=True,
+            show_summary=False,
+            show_period_view=False,
+        )
 
 
-def render_schedule_table(athlete_blocks_df, blocks_df, show_block_details=False, editable=False):
+def render_schedule_table(
+    athlete_blocks_df,
+    blocks_df,
+    show_block_details=False,
+    editable=False,
+    show_summary=True,
+    show_period_view=True,
+):
     display_df = athlete_blocks_df.copy()
     block_records = blocks_df.to_dict("records")
     blocks_by_id = {
@@ -1898,18 +2008,55 @@ def render_schedule_table(athlete_blocks_df, blocks_df, show_block_details=False
     display_df["block"] = display_df["block_id"].map(block_names).fillna(
         display_df["block_id"].astype(str)
     )
-    if "training_category" not in display_df.columns:
-        display_df["training_category"] = ""
-    display_df = display_df.sort_values(["week_num", "day_num", "training_category", "id"])
-    visible_columns = ["week_num", "day_num", "training_category", "block", "notes", "created_at"]
-    st.dataframe(display_df[visible_columns], use_container_width=True, hide_index=True)
+    for column in [
+        "event_name",
+        "cycle_goal",
+        "scheduled_date",
+        "start_date",
+        "end_date",
+        "training_category",
+    ]:
+        if column not in display_df.columns:
+            display_df[column] = ""
+    display_df["date_range"] = display_df.apply(date_range_label, axis=1)
+    display_df = display_df.sort_values(
+        ["week_num", "day_num", "start_date", "training_category", "id"],
+        na_position="last",
+    )
+    if show_summary:
+        visible_columns = [
+            "date_range",
+            "event_name",
+            "cycle_goal",
+            "week_num",
+            "day_num",
+            "training_category",
+            "block",
+            "notes",
+            "created_at",
+        ]
+        visible_columns = [column for column in visible_columns if column in display_df.columns]
+        st.dataframe(display_df[visible_columns], use_container_width=True, hide_index=True)
 
     if editable:
         render_athlete_block_assignment_editor(display_df, blocks_by_id)
 
+    if not show_period_view:
+        return
+
     st.markdown("#### 週期檢視")
     for (week_num, day_num), day_df in display_df.groupby(["week_num", "day_num"], sort=True):
-        with st.expander(f"Week {week_num} / Day {day_num}", expanded=True):
+        first_row = day_df.iloc[0].to_dict()
+        title_parts = [f"Week {week_num} / Day {day_num}"]
+        date_text = date_range_label(first_row)
+        if date_text:
+            title_parts.append(date_text)
+        if has_value(first_row.get("event_name")):
+            title_parts.append(str(first_row.get("event_name")))
+
+        with st.expander("｜".join(title_parts), expanded=False):
+            if has_value(first_row.get("cycle_goal")):
+                st.info(f"週期目標：{first_row.get('cycle_goal')}")
             for category, category_df in day_df.groupby("training_category", sort=False):
                 st.markdown(f"**{category or '未分類'}**")
                 for row in category_df.to_dict("records"):
@@ -1923,6 +2070,14 @@ def render_schedule_table(athlete_blocks_df, blocks_df, show_block_details=False
 
                     with st.container(border=True):
                         st.markdown(f"##### {row.get('block')}")
+                        meta_items = []
+                        if has_value(row.get("event_name")):
+                            meta_items.append(f"賽事/事件：{row.get('event_name')}")
+                        row_date_text = date_range_label(row)
+                        if row_date_text:
+                            meta_items.append(f"日期：{row_date_text}")
+                        if meta_items:
+                            st.caption("｜".join(meta_items))
                         if notes:
                             st.info(f"教練備註：{notes}")
 
@@ -1930,9 +2085,8 @@ def render_schedule_table(athlete_blocks_df, blocks_df, show_block_details=False
                             st.warning("找不到這個板塊的詳細資料，可能已被刪除。")
                             continue
 
-                        info_cols = st.columns(2)
-                        info_cols[0].write(f"目標：{block.get('goal') or '-'}")
-                        info_cols[1].write(f"訓練元素：{block.get('training_element') or '-'}")
+                        render_labeled_value("目標", block.get("goal"))
+                        render_labeled_value("訓練元素", block.get("training_element"))
                         if block.get("description"):
                             st.caption(f"描述：{block.get('description')}")
 
@@ -1951,9 +2105,19 @@ def render_athlete_block_assignment_editor(display_df, blocks_by_id):
         current_block_id = to_plain_int(row.get("block_id"))
         block = blocks_by_id.get(current_block_id)
         block_name = row.get("block") or f"Block {current_block_id}"
+        title_parts = [
+            f"Week {row.get('week_num')} / Day {row.get('day_num')}",
+            row.get("training_category") or "未分類",
+            block_name,
+        ]
+        date_text = date_range_label(row)
+        if date_text:
+            title_parts.insert(1, date_text)
+        if has_value(row.get("event_name")):
+            title_parts.insert(2, str(row.get("event_name")))
 
         with st.expander(
-            f"Week {row.get('week_num')} / Day {row.get('day_num')}｜{row.get('training_category') or '未分類'}｜{block_name}",
+            "｜".join(title_parts),
             expanded=False,
         ):
             if not block:
@@ -1969,14 +2133,23 @@ def render_athlete_block_assignment_editor(display_df, blocks_by_id):
                 st.info("這個板塊目前沒有詳細動作內容。")
 
             if block:
-                info_cols = st.columns(2)
-                info_cols[0].write(f"目標：{block.get('goal') or '-'}")
-                info_cols[1].write(f"訓練元素：{block.get('training_element') or '-'}")
+                render_labeled_value("目標", block.get("goal"))
+                render_labeled_value("訓練元素", block.get("training_element"))
                 if block.get("description"):
                     st.caption(f"描述：{block.get('description')}")
 
             with st.form(f"edit_athlete_block_content_{assignment_id}"):
                 st.markdown("##### 安排設定")
+                event_name = render_event_input(
+                    f"edit_assignment_{assignment_id}",
+                    row.get("event_name"),
+                )
+                cycle_goal = st.text_area(
+                    "週期目標",
+                    value=row.get("cycle_goal") if has_value(row.get("cycle_goal")) else "",
+                    height=80,
+                    key=f"edit_assignment_cycle_goal_{assignment_id}",
+                )
                 col1, col2, col3 = st.columns([1, 1, 2])
                 week_num = col1.number_input(
                     "Week",
@@ -1989,6 +2162,13 @@ def render_athlete_block_assignment_editor(display_df, blocks_by_id):
                     min_value=1,
                     value=to_plain_int(row.get("day_num")) or 1,
                     key=f"edit_assignment_day_{assignment_id}",
+                )
+                start_value = row.get("start_date") if has_value(row.get("start_date")) else row.get("scheduled_date")
+                end_value = row.get("end_date") if has_value(row.get("end_date")) else start_value
+                date_range = col3.date_input(
+                    "日期區間",
+                    value=(parse_date_value(start_value), parse_date_value(end_value)),
+                    key=f"edit_assignment_date_{assignment_id}",
                 )
                 current_category = row.get("training_category") or TRAINING_CATEGORIES[0]
                 category_index = (
@@ -2035,9 +2215,14 @@ def render_athlete_block_assignment_editor(display_df, blocks_by_id):
 
             if submitted:
                 try:
+                    start_date, end_date = normalize_date_range(date_range)
                     update_athlete_block_assignment(
                         assignment_id,
                         current_block_id,
+                        event_name,
+                        cycle_goal,
+                        start_date,
+                        end_date,
                         week_num,
                         day_num,
                         training_category,
@@ -2156,7 +2341,6 @@ def student_page():
         render_block_assignment_setup_help(athlete_blocks_error)
         return
 
-    st.subheader("課表板塊")
     if athlete_blocks_df.empty:
         st.info("目前還沒有被安排任何板塊。")
         st.caption(
@@ -2164,7 +2348,12 @@ def student_page():
             "請確認 Supabase 的 athlete_blocks.athlete_id 是否等於這個 ID。"
         )
     else:
-        render_schedule_table(athlete_blocks_df, blocks_df, show_block_details=True)
+        render_schedule_table(
+            athlete_blocks_df,
+            blocks_df,
+            show_block_details=True,
+            show_summary=False,
+        )
 
 
 def update_current_user_password(new_password):
