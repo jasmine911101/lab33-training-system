@@ -1,12 +1,18 @@
 import secrets
 import string
-from datetime import date
+import json
+from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 from openpyxl import load_workbook
 from supabase import create_client
+
+try:
+    from streamlit_calendar import calendar as st_calendar
+except Exception:
+    st_calendar = None
 
 
 st.set_page_config(page_title="LAB33 Training System", layout="wide")
@@ -833,6 +839,47 @@ def render_block_identity_errors(errors):
         st.error(error)
 
 
+def split_importable_blocks(parsed_blocks, existing_blocks_df):
+    existing_codes = set()
+    if existing_blocks_df is not None and not existing_blocks_df.empty:
+        existing_codes = {
+            normalize_unique_value(value)
+            for value in existing_blocks_df.get("block_code", pd.Series(dtype=str)).tolist()
+            if normalize_unique_value(value)
+        }
+
+    seen_codes = set()
+    importable_blocks = []
+    skipped_rows = []
+
+    for parsed_block in parsed_blocks:
+        block_code = parsed_block["sheet_name"]
+        block_name = parsed_block["block_name"]
+        normalized_code = normalize_unique_value(block_code)
+        reasons = []
+
+        if normalized_code in seen_codes:
+            reasons.append("這次檔案中 Block Code 重複")
+        if normalized_code in existing_codes:
+            reasons.append("資料庫已存在相同 Block Code")
+
+        seen_codes.add(normalized_code)
+
+        if reasons:
+            skipped_rows.append(
+                {
+                    "Block Code": block_code,
+                    "顯示名稱": block_name,
+                    "跳過原因": "、".join(reasons),
+                }
+            )
+            continue
+
+        importable_blocks.append(parsed_block)
+
+    return importable_blocks, skipped_rows
+
+
 def empty_manual_template_rows(row_count=4):
     return pd.DataFrame(
         [
@@ -1427,7 +1474,13 @@ where relname in ('athlete_blocks', 'athlete_block_exercises');
 
 
 def block_label(row):
-    return row.get("block_name") or row.get("block_code") or f"Block {row.get('id')}"
+    if not isinstance(row, dict):
+        return "未命名板塊"
+    block_code = row.get("block_code")
+    block_name = row.get("block_name")
+    if has_value(block_code) and has_value(block_name):
+        return f"{block_code} | {block_name}"
+    return block_name or block_code or f"Block {row.get('id')}"
 
 
 def render_labeled_value(label, value):
@@ -1453,6 +1506,12 @@ def coach_page():
     if fetch_error:
         render_setup_help(fetch_error)
         return
+
+    query_athlete_id = to_plain_int(get_query_param("assign_athlete"))
+    if query_athlete_id and not athletes_df.empty:
+        athlete_ids = set(athletes_df["id"].apply(to_plain_int).dropna().astype(int).tolist())
+        if query_athlete_id in athlete_ids:
+            st.session_state["selected_athlete_id"] = query_athlete_id
 
     selected_athlete_id = st.session_state.get("selected_athlete_id")
     if selected_athlete_id:
@@ -1650,21 +1709,17 @@ def blocks_page():
                     st.warning("沒有讀到可匯入的模板。請確認每個工作表都有 LAB33 板塊模板格式。")
                     return
 
+                importable_blocks, skipped_rows = split_importable_blocks(parsed_blocks, blocks_df)
+
                 st.markdown("#### 匯入預覽")
-                summary_rows = []
-                blocks_to_create = []
-                for parsed_block in parsed_blocks:
+                importable_summary_rows = []
+                for parsed_block in importable_blocks:
                     block_code = parsed_block["sheet_name"]
                     block_name = parsed_block["block_name"]
-                    blocks_to_create.append(
-                        {
-                            "block_code": block_code,
-                            "block_name": block_name,
-                        }
-                    )
                     exercise_count = sum(len(section["exercises"]) for section in parsed_block["sections"])
-                    summary_rows.append(
+                    importable_summary_rows.append(
                         {
+                            "匯入": True,
                             "將寫入 Block Code": block_code,
                             "將寫入顯示名稱": block_name,
                             "週期目標": parsed_block.get("goal") or "",
@@ -1673,14 +1728,49 @@ def blocks_page():
                             "動作數": exercise_count,
                         }
                     )
-                st.success(f"已讀取 {len(parsed_blocks)} 個板塊模板。")
-                st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
-                identity_errors = validate_new_block_identity(blocks_to_create, blocks_df)
-                if identity_errors:
-                    render_block_identity_errors(identity_errors)
-                    st.warning("請先調整 Excel 工作表名稱或模板顯示名稱，避免建立重複板塊。")
+                st.success(f"已讀取 {len(parsed_blocks)} 個板塊模板，可匯入 {len(importable_blocks)} 個。")
+                if importable_summary_rows:
+                    selected_summary_df = st.data_editor(
+                        pd.DataFrame(importable_summary_rows),
+                        use_container_width=True,
+                        hide_index=True,
+                        key=f"import_block_selection_{uploaded_file.name}_{len(importable_blocks)}",
+                        column_config={
+                            "匯入": st.column_config.CheckboxColumn(
+                                "匯入",
+                                help="取消勾選就不匯入這張工作表。",
+                                default=True,
+                            )
+                        },
+                        disabled=[
+                            "將寫入 Block Code",
+                            "將寫入顯示名稱",
+                            "週期目標",
+                            "訓練元素",
+                            "區段數",
+                            "動作數",
+                        ],
+                    )
+                else:
+                    selected_summary_df = pd.DataFrame()
 
-                for parsed_block in parsed_blocks:
+                if skipped_rows:
+                    st.warning("以下板塊會跳過，不影響其他可匯入的工作表。")
+                    st.dataframe(pd.DataFrame(skipped_rows), use_container_width=True, hide_index=True)
+
+                selected_block_codes = set()
+                if not selected_summary_df.empty:
+                    selected_block_codes = set(
+                        selected_summary_df[
+                            selected_summary_df["匯入"]
+                        ]["將寫入 Block Code"].tolist()
+                    )
+                selected_blocks = [
+                    parsed_block for parsed_block in importable_blocks
+                    if parsed_block["sheet_name"] in selected_block_codes
+                ]
+
+                for parsed_block in selected_blocks:
                     st.markdown(f"**{parsed_block['sheet_name']}｜{parsed_block['block_name']}**")
                     preview_rows = []
                     for section in parsed_block["sections"]:
@@ -1698,21 +1788,24 @@ def blocks_page():
 
                 with st.form("import_block_excel_form"):
                     import_description = st.text_area("描述", value="由 Excel 多工作表匯入")
-                    import_submitted = st.form_submit_button("確認匯入所有板塊", use_container_width=True)
+                    import_submitted = st.form_submit_button(
+                        f"確認匯入選取的 {len(selected_blocks)} 個板塊",
+                        use_container_width=True,
+                    )
 
                 if import_submitted:
-                    if identity_errors:
-                        render_block_identity_errors(identity_errors)
+                    if not selected_blocks:
+                        st.warning("目前沒有選取任何可匯入的新板塊。")
                         return
 
-                    for parsed_block in parsed_blocks:
+                    for parsed_block in selected_blocks:
                         block_code = parsed_block["sheet_name"]
                         create_block_from_excel(
                             parsed_block,
                             block_code,
                             import_description,
                         )
-                    st.success(f"已從 Excel 匯入 {len(parsed_blocks)} 個板塊。")
+                    st.success(f"已從 Excel 匯入 {len(selected_blocks)} 個板塊。")
                     st.rerun()
             except Exception as exc:
                 render_block_setup_help(exc)
@@ -1995,53 +2088,7 @@ def render_athlete_program_section(selected_athlete):
         render_block_assignment_setup_help(athlete_blocks_error)
         return
 
-    with st.container(border=True):
-        st.subheader("加入板塊")
-        if blocks_df.empty:
-            st.info("目前沒有任何 block。請先在 Supabase 的 `blocks` 表新增板塊。")
-            return
-
-        block_options = blocks_df.to_dict("records")
-        block_by_id = {
-            to_plain_int(block["id"]): block
-            for block in block_options
-        }
-        block_ids = list(block_by_id.keys())
-        with st.form("assign_block_form", clear_on_submit=True):
-            event_name = render_event_input("assign_block")
-            cycle_goal = st.text_area("週期目標", height=80)
-            col1, col2 = st.columns(2)
-            week_num = col1.number_input("Week", min_value=1, value=1)
-            day_num = col2.number_input("Day", min_value=1, value=1)
-            date_range = st.date_input("日期區間", value=(date.today(), date.today()))
-            training_category = st.selectbox("訓練分類", TRAINING_CATEGORIES)
-            selected_block_id = st.selectbox(
-                "選擇板塊",
-                block_ids,
-                format_func=lambda block_id: block_label(block_by_id[block_id]),
-            )
-            notes = st.text_area("備註")
-            submitted = st.form_submit_button("加入到這位學員課表", use_container_width=True)
-
-        if submitted:
-            try:
-                start_date, end_date = normalize_date_range(date_range)
-                assign_block_to_athlete(
-                    selected_athlete["id"],
-                    selected_block_id,
-                    event_name,
-                    cycle_goal,
-                    start_date,
-                    end_date,
-                    week_num,
-                    day_num,
-                    training_category,
-                    notes,
-                )
-                st.success("已將板塊加入這位學員的課表。")
-                st.rerun()
-            except Exception as exc:
-                render_block_assignment_setup_help(exc)
+    render_week_calendar_assignment(selected_athlete, blocks_df, athlete_blocks_df)
 
     if athlete_blocks_df.empty:
         st.info("這位學員目前還沒有加入任何板塊。")
@@ -2053,6 +2100,1074 @@ def render_athlete_program_section(selected_athlete):
             show_summary=False,
             show_period_view=False,
         )
+
+
+def render_week_calendar_assignment(selected_athlete, blocks_df, athlete_blocks_df):
+    with st.container(border=True):
+        st.subheader("加入板塊")
+        if blocks_df.empty:
+            st.info("目前沒有任何 block。請先在板塊頁新增板塊。")
+            return
+
+        block_options = blocks_df.to_dict("records")
+        block_by_id = {
+            to_plain_int(block["id"]): block
+            for block in block_options
+        }
+        block_ids = list(block_by_id.keys())
+
+        selected_calendar_range = render_assignment_calendar(
+            selected_athlete["id"],
+            athlete_blocks_df,
+            block_by_id,
+        )
+        if not selected_calendar_range:
+            st.info("請先在上方行事曆點選一天，或拖曳選取日期區間，再安排當天課表。")
+            return
+
+        start_date, end_date = selected_calendar_range
+        date_text = start_date.isoformat() if start_date == end_date else f"{start_date.isoformat()} ~ {end_date.isoformat()}"
+        st.markdown(f"#### 安排 {date_text} 的課表")
+        with st.form(f"assign_block_form_{selected_athlete['id']}", clear_on_submit=True):
+            event_name = render_event_input(f"assign_block_{selected_athlete['id']}")
+            date_col1, date_col2 = st.columns(2)
+            form_start_date = date_col1.date_input("開始日期", value=start_date)
+            form_end_date = date_col2.date_input("結束日期", value=end_date)
+            cycle_goal = st.text_area("週期目標", height=70)
+            col1, col2 = st.columns(2)
+            week_num = col1.number_input("Week", min_value=1, value=1)
+            day_num = col2.number_input("Day", min_value=1, value=form_start_date.isoweekday())
+            training_category = st.selectbox("訓練分類", TRAINING_CATEGORIES)
+            selected_block_id = st.selectbox(
+                "選擇板塊",
+                block_ids,
+                format_func=lambda block_id: block_label(block_by_id[block_id]),
+            )
+            notes = st.text_area("備註", height=70)
+            submitted = st.form_submit_button("加入到這位學員課表", use_container_width=True)
+
+        if submitted:
+            if form_end_date < form_start_date:
+                st.warning("結束日期不能早於開始日期。")
+                return
+            try:
+                assign_block_to_athlete(
+                    selected_athlete["id"],
+                    selected_block_id,
+                    event_name,
+                    cycle_goal,
+                    form_start_date,
+                    form_end_date,
+                    week_num,
+                    day_num,
+                    training_category,
+                    notes,
+                )
+                st.session_state.pop(f"assignment_calendar_selected_range_{selected_athlete['id']}", None)
+                st.success("已將板塊加入這位學員的課表。")
+                st.rerun()
+            except Exception as exc:
+                render_block_assignment_setup_help(exc)
+
+
+def assignment_calendar_options():
+    return {
+        "initialView": "dayGridMonth",
+        "locale": "zh-tw",
+        "firstDay": 1,
+        "selectable": True,
+        "height": 620,
+        "dayMaxEvents": True,
+        "headerToolbar": {
+            "left": "prev,next today",
+            "center": "title",
+            "right": "dayGridMonth,listMonth",
+        },
+        "buttonText": {
+            "today": "今天",
+            "month": "月",
+            "list": "清單",
+        },
+    }
+
+
+def assignment_calendar_custom_css():
+    return """
+    .fc .fc-button-primary {
+        background: #3E424B;
+        border-color: #3E424B;
+        box-shadow: none;
+    }
+    .fc .fc-button-primary:hover,
+    .fc .fc-button-primary:focus {
+        background: #292d34;
+        border-color: #292d34;
+    }
+    .fc-event {
+        border: 2px solid #3E424B !important;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 700;
+        padding: 2px 6px;
+    }
+    .fc-event.selected-calendar-event,
+    .fc-event.selected-calendar-event:hover {
+        border-color: #f59e0b !important;
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.45) !important;
+    }
+    .fc-event:active,
+    .fc-event:focus,
+    .fc-event:focus-visible,
+    .fc-event:focus-within,
+    a.fc-event:focus,
+    a.fc-event:focus-visible {
+        outline: none !important;
+        box-shadow: 0 0 0 2px #f59e0b !important;
+    }
+    @media (max-width: 640px) {
+        .fc .fc-toolbar {
+            align-items: stretch;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .fc .fc-toolbar-title {
+            font-size: 1.1rem;
+        }
+        .fc .fc-daygrid-day-frame {
+            min-height: 72px;
+        }
+    }
+    """
+
+
+def render_calendar_assignment_detail_card(assignment_id, athlete_blocks_df, block_by_id):
+    if athlete_blocks_df is None or athlete_blocks_df.empty or "id" not in athlete_blocks_df.columns:
+        return
+
+    assignment_rows = athlete_blocks_df[
+        athlete_blocks_df["id"].astype(str) == str(assignment_id)
+    ]
+    if assignment_rows.empty:
+        return
+
+    row = assignment_rows.iloc[0].to_dict()
+    block = block_by_id.get(to_plain_int(row.get("block_id")))
+    block_name = block_label(block) if block else str(row.get("block_id") or "未命名板塊")
+    title_parts = [
+        f"Week {row.get('week_num')} / Day {row.get('day_num')}",
+        date_range_label(row),
+        row.get("training_category") or "未分類",
+        block_name,
+    ]
+
+    with st.container(border=True):
+        st.markdown(f"### {block_name}")
+        st.caption("｜".join([str(part) for part in title_parts if has_value(part)]))
+        if has_value(row.get("event_name")):
+            st.write(f"**賽事/事件：** {row.get('event_name')}")
+        if has_value(row.get("cycle_goal")):
+            st.info(f"週期目標：{row.get('cycle_goal')}")
+        if has_value(row.get("notes")):
+            st.info(f"教練備註：{row.get('notes')}")
+
+        if not block:
+            st.warning("找不到這個板塊的詳細資料，可能已被刪除。")
+            return
+
+        render_labeled_value("目標", block.get("goal"))
+        render_labeled_value("訓練元素", block.get("training_element"))
+        if block.get("description"):
+            st.caption(f"描述：{block.get('description')}")
+
+        render_assignment_detail_tables(
+            row["id"],
+            block["id"],
+            empty_message="這個板塊目前沒有建立詳細動作內容。",
+        )
+
+
+def render_assignment_calendar(athlete_id, athlete_blocks_df, block_by_id):
+    st.markdown("#### 課表行事曆")
+    selection_key = f"assignment_calendar_selected_range_{athlete_id}"
+    selected_event_key = f"assignment_calendar_selected_event_{athlete_id}"
+    component_key = f"assignment_calendar_{athlete_id}"
+
+    selected_event_id = sync_calendar_event_selection_from_state(
+        component_key,
+        selected_event_key,
+    )
+    events = build_assignment_calendar_events(
+        athlete_blocks_df,
+        block_by_id,
+        selected_event_id,
+    )
+
+    calendar_range = None
+    stored_range = st.session_state.get(selection_key)
+    if stored_range:
+        try:
+            calendar_range = (
+                pd.to_datetime(stored_range[0]).date(),
+                pd.to_datetime(stored_range[1]).date(),
+            )
+        except Exception:
+            st.session_state.pop(selection_key, None)
+
+    if st_calendar is None:
+        selected_date_text = ""
+        if calendar_range and calendar_range[0] == calendar_range[1]:
+            selected_date_text = calendar_range[0].isoformat()
+            st.success(f"已選取 {selected_date_text}，可以直接在下方安排這一天的課表。")
+        st.warning("目前缺少 streamlit-calendar，行事曆只能查看，不能直接點日期安排課表。")
+        render_frontend_schedule_calendar(
+            events,
+            athlete_blocks_df,
+            block_by_id,
+            key_prefix=f"coach_schedule_{athlete_id}",
+            enable_date_selection=False,
+            selected_date=selected_date_text,
+            athlete_id=athlete_id,
+        )
+        return calendar_range
+
+    calendar_state = st_calendar(
+        events=events,
+        options=assignment_calendar_options(),
+        custom_css=assignment_calendar_custom_css(),
+        callbacks=["dateClick", "select", "eventClick"],
+        key=component_key,
+    )
+
+    selected_event_id = sync_calendar_event_selection_from_state(
+        calendar_state,
+        selected_event_key,
+    )
+
+    selected_range = extract_calendar_selection(calendar_state)
+    if selected_range:
+        calendar_range = selected_range
+        st.session_state[selection_key] = (
+            calendar_range[0].isoformat(),
+            calendar_range[1].isoformat(),
+        )
+
+    selected_date_text = ""
+    if calendar_range and calendar_range[0] == calendar_range[1]:
+        selected_date_text = calendar_range[0].isoformat()
+        st.success(f"已選取 {selected_date_text}，可以直接在下方安排這一天的課表。")
+
+    if selected_event_id:
+        render_calendar_assignment_detail_card(selected_event_id, athlete_blocks_df, block_by_id)
+
+    return calendar_range
+
+
+@st.fragment
+def render_student_schedule_calendar(athlete_id, athlete_blocks_df, blocks_df):
+    st.markdown("#### 課表行事曆")
+    block_by_id = {
+        to_plain_int(block["id"]): block
+        for block in blocks_df.to_dict("records")
+    }
+    events = build_assignment_calendar_events(
+        athlete_blocks_df,
+        block_by_id,
+    )
+    if not events:
+        st.info("目前沒有可顯示在行事曆上的課表日期。")
+        return
+
+    render_frontend_schedule_calendar(
+        events,
+        athlete_blocks_df,
+        block_by_id,
+        key_prefix=f"student_schedule_{athlete_id}",
+    )
+
+
+def render_frontend_schedule_calendar(
+    events,
+    athlete_blocks_df,
+    block_by_id,
+    key_prefix,
+    enable_date_selection=False,
+    selected_date="",
+    athlete_id=None,
+):
+    payload = {
+        "events": events,
+        "details": build_assignment_frontend_details(athlete_blocks_df, block_by_id),
+        "enableDateSelection": enable_date_selection,
+        "selectedDate": selected_date,
+        "athleteId": str(athlete_id or ""),
+    }
+    payload_json = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+    html = f"""
+    <div id="{key_prefix}" class="lab33-calendar-root">
+      <div class="lab33-cal-toolbar">
+        <div class="lab33-cal-nav">
+          <button type="button" data-action="prev">‹</button>
+          <button type="button" data-action="today">今天</button>
+          <button type="button" data-action="next">›</button>
+        </div>
+        <div class="lab33-cal-title"></div>
+        <div class="lab33-cal-tabs">
+          <button type="button" data-view="month" class="active">月</button>
+          <button type="button" data-view="list">清單</button>
+        </div>
+      </div>
+      <div class="lab33-cal-month"></div>
+      <div class="lab33-cal-list" hidden></div>
+      <div class="lab33-cal-detail" hidden></div>
+    </div>
+    <script>
+      (() => {{
+        const payload = {payload_json};
+        const root = document.getElementById("{key_prefix}");
+        const events = payload.events || [];
+        const details = payload.details || {{}};
+        const enableDateSelection = Boolean(payload.enableDateSelection);
+        const selectedDate = payload.selectedDate || "";
+        const athleteId = payload.athleteId || "";
+        const weekdayLabels = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"];
+        const state = {{
+          view: "month",
+          selectedId: null,
+          currentMonth: initialMonth(events),
+        }};
+
+        function parseIso(value) {{
+          if (!value) return null;
+          const parts = String(value).slice(0, 10).split("-").map(Number);
+          if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+          return new Date(parts[0], parts[1] - 1, parts[2]);
+        }}
+
+        function isoDate(date) {{
+          const y = date.getFullYear();
+          const m = String(date.getMonth() + 1).padStart(2, "0");
+          const d = String(date.getDate()).padStart(2, "0");
+          return `${{y}}-${{m}}-${{d}}`;
+        }}
+
+        function addDays(date, days) {{
+          const next = new Date(date);
+          next.setDate(next.getDate() + days);
+          return next;
+        }}
+
+        function initialMonth(items) {{
+          const firstEvent = items.map((event) => parseIso(event.start)).find(Boolean);
+          const source = firstEvent || new Date();
+          return new Date(source.getFullYear(), source.getMonth(), 1);
+        }}
+
+        function eventDates(event) {{
+          const start = parseIso(event.start);
+          if (!start) return [];
+          const end = event.end ? parseIso(event.end) : null;
+          const exclusiveEnd = end && end > start ? end : addDays(start, 1);
+          const dates = [];
+          for (let day = new Date(start); day < exclusiveEnd; day = addDays(day, 1)) {{
+            dates.push(isoDate(day));
+          }}
+          return dates;
+        }}
+
+        function eventsByDate() {{
+          const grouped = {{}};
+          events.forEach((event) => {{
+            eventDates(event).forEach((dateKey) => {{
+              grouped[dateKey] ||= [];
+              grouped[dateKey].push(event);
+            }});
+          }});
+          return grouped;
+        }}
+
+        function render() {{
+          root.querySelector(".lab33-cal-title").textContent =
+            `${{state.currentMonth.getFullYear()}} 年 ${{state.currentMonth.getMonth() + 1}} 月`;
+          root.querySelectorAll("[data-view]").forEach((button) => {{
+            button.classList.toggle("active", button.dataset.view === state.view);
+          }});
+          root.querySelector(".lab33-cal-month").hidden = state.view !== "month";
+          root.querySelector(".lab33-cal-list").hidden = state.view !== "list";
+          renderMonth();
+          renderList();
+          renderDetail();
+        }}
+
+        function renderMonth() {{
+          const grouped = eventsByDate();
+          const monthNode = root.querySelector(".lab33-cal-month");
+          const firstDay = new Date(state.currentMonth);
+          const offset = (firstDay.getDay() + 6) % 7;
+          const gridStart = addDays(firstDay, -offset);
+          let html = `<div class="lab33-cal-grid lab33-cal-weekdays">`;
+          weekdayLabels.forEach((label) => html += `<div>${{label}}</div>`);
+          html += `</div><div class="lab33-cal-grid">`;
+          for (let i = 0; i < 42; i += 1) {{
+            const day = addDays(gridStart, i);
+            const dateKey = isoDate(day);
+            const isCurrentMonth = day.getMonth() === state.currentMonth.getMonth();
+            const isToday = dateKey === isoDate(new Date());
+            const isSelectedDate = selectedDate === dateKey;
+            html += `<div class="lab33-cal-cell ${{isCurrentMonth ? "" : "muted"}} ${{isToday ? "today" : ""}} ${{isSelectedDate ? "selected-date" : ""}}" data-date="${{dateKey}}">`;
+            html += `<div class="lab33-cal-day">${{day.getDate()}}日</div>`;
+            (grouped[dateKey] || []).forEach((event) => {{
+              html += eventButton(event);
+            }});
+            html += `</div>`;
+          }}
+          html += `</div>`;
+          monthNode.innerHTML = html;
+        }}
+
+        function renderList() {{
+          const listNode = root.querySelector(".lab33-cal-list");
+          const sortedEvents = [...events].sort((a, b) => String(a.start).localeCompare(String(b.start)));
+          if (!sortedEvents.length) {{
+            listNode.innerHTML = `<div class="lab33-empty">目前沒有課表。</div>`;
+            return;
+          }}
+          listNode.innerHTML = sortedEvents.map((event) => {{
+            const detail = details[String(event.id)] || {{}};
+            const meta = [
+              detail.date_range,
+              detail.category,
+              detail.block_label,
+            ].filter(Boolean).join("｜");
+            return `<div class="lab33-list-row">
+              <div><strong>${{escapeHtml(event.title || "")}}</strong><div class="lab33-muted">${{escapeHtml(meta)}}</div></div>
+              ${{eventButton(event)}}
+            </div>`;
+          }}).join("");
+        }}
+
+        function eventButton(event) {{
+          const id = String(event.id);
+          const isSelected = state.selectedId === id;
+          const title = escapeHtml(event.title || "課表");
+          return `<button type="button" class="lab33-event ${{isSelected ? "selected" : ""}}" data-event-id="${{escapeHtml(id)}}">${{title}}</button>`;
+        }}
+
+        function renderDetail() {{
+          const detailNode = root.querySelector(".lab33-cal-detail");
+          if (!state.selectedId) {{
+            detailNode.hidden = true;
+            detailNode.innerHTML = "";
+            return;
+          }}
+          const detail = details[String(state.selectedId)];
+          if (!detail) {{
+            detailNode.hidden = true;
+            detailNode.innerHTML = "";
+            return;
+          }}
+          detailNode.hidden = false;
+          detailNode.innerHTML = `
+            <div class="lab33-detail-card">
+              <h3>${{escapeHtml(detail.block_label || "課表")}}</h3>
+              <div class="lab33-muted">${{escapeHtml(detail.meta || "")}}</div>
+              ${{detail.event_name || detail.date_range ? `<p class="lab33-muted">賽事/事件：${{escapeHtml(detail.event_name || "-")}}｜日期：${{escapeHtml(detail.date_range || "-")}}</p>` : ""}}
+              ${{detail.cycle_goal ? `<div class="lab33-goal"><strong>週期目標：</strong>${{escapeHtml(detail.cycle_goal)}}</div>` : ""}}
+              ${{detail.goal ? `<p><strong>目標：</strong>${{escapeHtml(detail.goal)}}</p>` : ""}}
+              ${{detail.training_element ? `<p><strong>訓練元素：</strong>${{escapeHtml(detail.training_element)}}</p>` : ""}}
+              ${{detail.description ? `<p class="lab33-muted">描述：${{escapeHtml(detail.description)}}</p>` : ""}}
+              ${{renderSections(detail.sections || [])}}
+            </div>`;
+        }}
+
+        function renderSections(sections) {{
+          if (!sections.length) return `<div class="lab33-empty">這個板塊目前沒有詳細動作內容。</div>`;
+          return sections.map((section) => `
+            <section class="lab33-section">
+              <h4>${{escapeHtml(section.name || "未命名區段")}}</h4>
+              <div class="lab33-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>動作</th><th>組數</th><th>次數/時間</th><th>工具</th><th>強度</th><th>重量</th><th>休息時間</th><th>影片連結</th><th>備註</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${{(section.rows || []).map((row) => `
+                      <tr>
+                        <td>${{escapeHtml(row.exercise_name)}}</td>
+                        <td>${{escapeHtml(row.sets)}}</td>
+                        <td>${{escapeHtml(row.reps_or_time)}}</td>
+                        <td>${{escapeHtml(row.equipment)}}</td>
+                        <td>${{escapeHtml(row.intensity)}}</td>
+                        <td>${{escapeHtml(row.weight)}}</td>
+                        <td>${{escapeHtml(row.rest)}}</td>
+                        <td>${{row.video_url ? `<a href="${{escapeAttr(row.video_url)}}" target="_blank" rel="noopener noreferrer">觀看影片</a>` : ""}}</td>
+                        <td>${{escapeHtml(row.notes)}}</td>
+                      </tr>
+                    `).join("")}}
+                  </tbody>
+                </table>
+              </div>
+            </section>`).join("");
+        }}
+
+        function escapeHtml(value) {{
+          return String(value ?? "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+        }}
+
+        function escapeAttr(value) {{
+          return escapeHtml(value).replaceAll("`", "&#096;");
+        }}
+
+        function selectDate(dateKey) {{
+          if (!enableDateSelection || !athleteId || !dateKey) return;
+          let baseUrl = "";
+          try {{
+            baseUrl = window.parent.location.href;
+          }} catch (error) {{
+            baseUrl = document.referrer || window.location.href;
+          }}
+
+          const parentUrl = new URL(baseUrl);
+          parentUrl.searchParams.set("assign_athlete", athleteId);
+          parentUrl.searchParams.set("assign_date", dateKey);
+          parentUrl.searchParams.set("assign_ts", String(Date.now()));
+
+          const targetUrl = parentUrl.toString();
+          try {{
+            window.parent.location.assign(targetUrl);
+          }} catch (error) {{
+            window.open(targetUrl, "_parent");
+          }}
+        }}
+
+        root.addEventListener("click", (event) => {{
+          const eventButtonNode = event.target.closest("[data-event-id]");
+          if (eventButtonNode) {{
+            const id = eventButtonNode.dataset.eventId;
+            state.selectedId = state.selectedId === id ? null : id;
+            render();
+            return;
+          }}
+          const actionButton = event.target.closest("[data-action]");
+          if (actionButton) {{
+            const action = actionButton.dataset.action;
+            if (action === "prev") state.currentMonth.setMonth(state.currentMonth.getMonth() - 1);
+            if (action === "next") state.currentMonth.setMonth(state.currentMonth.getMonth() + 1);
+            if (action === "today") state.currentMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+            render();
+            return;
+          }}
+          const viewButton = event.target.closest("[data-view]");
+          if (viewButton) {{
+            state.view = viewButton.dataset.view;
+            render();
+            return;
+          }}
+          const dateCell = event.target.closest("[data-date]");
+          if (dateCell && root.contains(dateCell)) {{
+            selectDate(dateCell.dataset.date);
+          }}
+        }});
+
+        render();
+      }})();
+    </script>
+    <style>
+      .lab33-calendar-root {{
+        color: #30333f;
+        font-family: "Source Sans Pro", sans-serif;
+      }}
+      .lab33-cal-toolbar {{
+        align-items: center;
+        display: flex;
+        gap: 0.75rem;
+        justify-content: space-between;
+        margin-bottom: 0.75rem;
+      }}
+      .lab33-cal-title {{
+        font-size: 1.15rem;
+        font-weight: 800;
+      }}
+      .lab33-cal-nav,
+      .lab33-cal-tabs {{
+        display: flex;
+        gap: 0.35rem;
+      }}
+      .lab33-cal-toolbar button {{
+        background: #fff;
+        border: 1px solid #d7d9df;
+        border-radius: 10px;
+        color: #30333f;
+        cursor: pointer;
+        font-weight: 700;
+        padding: 0.45rem 0.7rem;
+      }}
+      .lab33-cal-tabs button.active {{
+        background: #3E424B;
+        border-color: #3E424B;
+        color: #fff;
+      }}
+      .lab33-cal-grid {{
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+      }}
+      .lab33-cal-weekdays > div {{
+        border: 1px solid #e2e4e8;
+        border-bottom: 0;
+        font-weight: 800;
+        padding: 0.45rem;
+        text-align: center;
+      }}
+      .lab33-cal-cell {{
+        border: 1px solid #e2e4e8;
+        min-height: 118px;
+        padding: 0.35rem;
+      }}
+      .lab33-cal-cell.muted {{
+        color: #b7bbc4;
+      }}
+      .lab33-cal-cell.today {{
+        background: #fff9df;
+      }}
+      .lab33-cal-cell.selected-date {{
+        background: #e8f6fb;
+        box-shadow: inset 0 0 0 2px #9bd3e4;
+      }}
+      .lab33-cal-cell[data-date] {{
+        cursor: pointer;
+      }}
+      .lab33-cal-day {{
+        font-size: 0.95rem;
+        font-weight: 800;
+        margin-bottom: 0.35rem;
+        text-align: right;
+      }}
+      .lab33-event {{
+        background: #3E424B;
+        border: 2px solid #3E424B;
+        border-radius: 9px;
+        color: #fff;
+        cursor: pointer;
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 800;
+        margin: 0.22rem 0;
+        max-width: 100%;
+        overflow: hidden;
+        padding: 0.22rem 0.4rem;
+        text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }}
+      .lab33-event.selected {{
+        background: #24272D;
+        border-color: #f59e0b;
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.55);
+      }}
+      .lab33-list-row {{
+        align-items: center;
+        border: 1px solid #e2e4e8;
+        border-radius: 12px;
+        display: flex;
+        gap: 1rem;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+        padding: 0.75rem;
+      }}
+      .lab33-list-row .lab33-event {{
+        flex: 0 0 auto;
+        min-width: 120px;
+      }}
+      .lab33-detail-card {{
+        border: 1px solid #d7d9df;
+        border-radius: 14px;
+        margin-top: 1rem;
+        padding: 1rem;
+      }}
+      .lab33-detail-card h3 {{
+        font-size: 1.45rem;
+        margin: 0 0 0.45rem;
+      }}
+      .lab33-muted {{
+        color: #7f8490;
+      }}
+      .lab33-goal {{
+        background: #e9f3ff;
+        border-radius: 10px;
+        color: #0f4c81;
+        margin: 0.75rem 0;
+        padding: 0.75rem;
+      }}
+      .lab33-section h4 {{
+        margin: 1rem 0 0.45rem;
+      }}
+      .lab33-table-wrap {{
+        overflow-x: auto;
+      }}
+      .lab33-table-wrap table {{
+        border-collapse: collapse;
+        min-width: 920px;
+        width: 100%;
+      }}
+      .lab33-table-wrap th,
+      .lab33-table-wrap td {{
+        border: 1px solid #e2e4e8;
+        padding: 0.5rem;
+        text-align: left;
+        vertical-align: top;
+      }}
+      .lab33-table-wrap th {{
+        background: #f6f7f9;
+        color: #7f8490;
+        font-weight: 700;
+      }}
+      .lab33-table-wrap a {{
+        color: #0068c9;
+        font-weight: 800;
+      }}
+      .lab33-empty {{
+        background: #e9f3ff;
+        border-radius: 10px;
+        color: #0f4c81;
+        padding: 0.8rem;
+      }}
+      @media (max-width: 640px) {{
+        .lab33-cal-toolbar,
+        .lab33-list-row {{
+          align-items: stretch;
+          flex-direction: column;
+        }}
+        .lab33-cal-title {{
+          text-align: center;
+        }}
+        .lab33-cal-cell {{
+          min-height: 86px;
+          padding: 0.25rem;
+        }}
+        .lab33-cal-weekdays > div {{
+          font-size: 0.8rem;
+          padding: 0.3rem 0.1rem;
+        }}
+        .lab33-event {{
+          font-size: 0.68rem;
+          padding: 0.16rem 0.28rem;
+        }}
+      }}
+    </style>
+    """
+    components.html(html, height=1180, scrolling=True)
+
+
+def build_assignment_frontend_details(athlete_blocks_df, block_by_id):
+    details = {}
+    if athlete_blocks_df is None or athlete_blocks_df.empty:
+        return details
+
+    for row in athlete_blocks_df.to_dict("records"):
+        assignment_id = str(row.get("id"))
+        block = block_by_id.get(to_plain_int(row.get("block_id"))) or {}
+        block_id = block.get("id") or row.get("block_id")
+        block_name = block_label(block) if block else str(row.get("block_id") or "未命名板塊")
+        exercises_df, error = fetch_athlete_block_exercises(row.get("id"))
+        if error or exercises_df.empty:
+            exercises_df = assignment_exercises_from_template(block_id)
+        details[assignment_id] = {
+            "block_label": block_name,
+            "meta": "｜".join([
+                f"Week {row.get('week_num')} / Day {row.get('day_num')}",
+                date_range_label(row),
+                row.get("training_category") or "未分類",
+                block_name,
+            ]),
+            "event_name": safe_frontend_text(row.get("event_name")),
+            "date_range": safe_frontend_text(date_range_label(row)),
+            "cycle_goal": safe_frontend_text(row.get("cycle_goal")),
+            "goal": safe_frontend_text(block.get("goal")),
+            "training_element": safe_frontend_text(block.get("training_element")),
+            "description": safe_frontend_text(block.get("description")),
+            "sections": build_frontend_exercise_sections(exercises_df),
+        }
+    return details
+
+
+def build_frontend_exercise_sections(exercises_df):
+    if exercises_df is None or exercises_df.empty:
+        return []
+
+    exercises_df = exercises_df.copy()
+    for column, default in {
+        "section_name": "未命名區段",
+        "section_order": 0,
+        "order_num": 0,
+    }.items():
+        if column not in exercises_df.columns:
+            exercises_df[column] = default
+
+    sections = []
+    sort_columns = [
+        column for column in ["section_order", "order_num"]
+        if column in exercises_df.columns
+    ]
+    if sort_columns:
+        exercises_df = exercises_df.sort_values(sort_columns)
+
+    for section_name, section_df in exercises_df.groupby("section_name", dropna=False):
+        rows = []
+        for exercise in section_df.to_dict("records"):
+            rows.append({
+                "exercise_name": safe_frontend_text(exercise.get("exercise_name")),
+                "sets": safe_frontend_text(exercise.get("sets")),
+                "reps_or_time": safe_frontend_text(exercise.get("reps_or_time")),
+                "equipment": safe_frontend_text(exercise.get("equipment")),
+                "intensity": safe_frontend_text(exercise.get("intensity")),
+                "weight": safe_frontend_text(exercise.get("weight")),
+                "rest": safe_frontend_text(exercise.get("rest")),
+                "video_url": safe_frontend_text(exercise.get("video_url")),
+                "notes": safe_frontend_text(exercise.get("notes")),
+            })
+        sections.append({
+            "name": safe_frontend_text(section_name or "未命名區段"),
+            "rows": rows,
+        })
+    return sections
+
+
+def safe_frontend_text(value):
+    return str(value) if has_value(value) else ""
+
+
+def render_selected_student_assignment(selected_assignment_id, athlete_blocks_df, block_by_id):
+    assignment_rows = athlete_blocks_df[
+        athlete_blocks_df["id"].astype(str) == str(selected_assignment_id)
+    ]
+    if assignment_rows.empty:
+        st.warning("找不到這筆課表內容，可能已被教練移除。")
+        return
+
+    row = assignment_rows.iloc[0].to_dict()
+    block = block_by_id.get(to_plain_int(row.get("block_id")))
+    block_name = block_label(block) if block else str(row.get("block_id") or "未命名板塊")
+    title_parts = [
+        f"Week {row.get('week_num')} / Day {row.get('day_num')}",
+        date_range_label(row),
+        row.get("training_category") or "未分類",
+        block_name,
+    ]
+    title = "｜".join([str(part) for part in title_parts if has_value(part)])
+
+    with st.container(border=True):
+        st.markdown(f"### {block_name}")
+        st.caption(title)
+        if has_value(row.get("event_name")):
+            st.write(f"**賽事/事件：** {row.get('event_name')}")
+        if has_value(row.get("cycle_goal")):
+            st.info(f"週期目標：{row.get('cycle_goal')}")
+        if has_value(row.get("notes")):
+            st.info(f"教練備註：{row.get('notes')}")
+
+        if not block:
+            st.warning("找不到這個板塊的詳細資料，可能已被刪除。")
+            return
+
+        render_labeled_value("目標", block.get("goal"))
+        render_labeled_value("訓練元素", block.get("training_element"))
+        if block.get("description"):
+            st.caption(f"描述：{block.get('description')}")
+
+        render_assignment_detail_tables(
+            row["id"],
+            block["id"],
+            empty_message="這個板塊目前沒有建立詳細動作內容。",
+        )
+
+
+def build_assignment_calendar_events(athlete_blocks_df, block_by_id, selected_assignment_id=""):
+    if athlete_blocks_df is None or athlete_blocks_df.empty:
+        return []
+
+    calendar_event_color = "#3E424B"
+    events = []
+    for row in athlete_blocks_df.to_dict("records"):
+        start = calendar_date_string(row.get("start_date") or row.get("scheduled_date"))
+        if not start:
+            continue
+
+        block = block_by_id.get(to_plain_int(row.get("block_id")))
+        block_name = block_label(block) if block else str(row.get("block_id") or "未命名板塊")
+        category = row.get("training_category") or "未分類"
+        title = f"W{row.get('week_num')}D{row.get('day_num')}｜{category}｜{block_name}"
+        event_color = calendar_event_color
+        is_selected = str(row.get("id")) == str(selected_assignment_id)
+        event = {
+            "id": str(row.get("id")),
+            "title": title,
+            "start": start,
+            "allDay": True,
+            "backgroundColor": event_color,
+            "borderColor": "#f59e0b" if is_selected else event_color,
+            "textColor": "#ffffff",
+            "classNames": ["selected-calendar-event"] if is_selected else [],
+            "extendedProps": {
+                "assignment_id": str(row.get("id")),
+                "block": block_name,
+                "category": category,
+                "event_name": row.get("event_name") or "",
+                "date_range": date_range_label(row),
+            },
+        }
+        end = calendar_exclusive_end_string(row.get("end_date"), start)
+        if end:
+            event["end"] = end
+        events.append(event)
+    return events
+
+
+def calendar_date_string(value):
+    if not has_value(value):
+        return ""
+    try:
+        return pd.to_datetime(value).date().isoformat()
+    except Exception:
+        return ""
+
+
+def calendar_exclusive_end_string(end_value, start_iso):
+    end_iso = calendar_date_string(end_value)
+    if not end_iso or end_iso == start_iso:
+        return ""
+    try:
+        return (pd.to_datetime(end_iso).date() + timedelta(days=1)).isoformat()
+    except Exception:
+        return end_iso
+
+
+def extract_calendar_event(calendar_state):
+    if not isinstance(calendar_state, dict):
+        return ""
+    event_click = calendar_state.get("eventClick") or {}
+    event = event_click.get("event") if isinstance(event_click, dict) else {}
+    if not isinstance(event, dict):
+        return ""
+    title = event.get("title")
+    props = event.get("extendedProps") or {}
+    detail_parts = [title] if title else []
+    if props.get("event_name"):
+        detail_parts.append(f"賽事/事件：{props.get('event_name')}")
+    if props.get("date_range"):
+        detail_parts.append(f"日期：{props.get('date_range')}")
+    return "｜".join(detail_parts)
+
+
+def extract_calendar_event_id(calendar_state):
+    if not isinstance(calendar_state, dict):
+        return ""
+    event_click = calendar_state.get("eventClick") or {}
+    event = event_click.get("event") if isinstance(event_click, dict) else {}
+    if not isinstance(event, dict):
+        return ""
+
+    props = event.get("extendedProps") or {}
+    event_def = event.get("_def") or {}
+    event_id = (
+        event.get("id")
+        or props.get("assignment_id")
+        or event_def.get("publicId")
+    )
+    return str(event_id) if has_value(event_id) else ""
+
+
+def sync_calendar_event_selection_from_state(calendar_source, selection_key):
+    if isinstance(calendar_source, str):
+        calendar_state = st.session_state.get(calendar_source)
+    else:
+        calendar_state = calendar_source
+
+    clicked_event_id = extract_calendar_event_id(calendar_state)
+    if not clicked_event_id:
+        return st.session_state.get(selection_key, "")
+
+    event_click = calendar_state.get("eventClick") if isinstance(calendar_state, dict) else {}
+    click_signature = json.dumps(event_click or {}, sort_keys=True, default=str)
+    processed_key = f"{selection_key}_last_click_signature"
+    if st.session_state.get(processed_key) == click_signature:
+        return st.session_state.get(selection_key, "")
+
+    selected_event_id = toggle_calendar_assignment_selection(selection_key, clicked_event_id)
+    st.session_state[processed_key] = click_signature
+    return selected_event_id
+
+
+def toggle_calendar_assignment_selection(selection_key, clicked_event_id):
+    current_id = st.session_state.get(selection_key)
+    if not clicked_event_id:
+        return current_id
+    if str(current_id) == str(clicked_event_id):
+        st.session_state.pop(selection_key, None)
+        return ""
+    st.session_state[selection_key] = clicked_event_id
+    return clicked_event_id
+
+
+def extract_calendar_selection(calendar_state):
+    if not isinstance(calendar_state, dict):
+        return None
+
+    selected_payload = None
+    # A single date click can leave a previous range selection in the payload.
+    # Prefer the most recent click so the highlighted day and form date match.
+    for key in ("dateClick", "select"):
+        payload = calendar_state.get(key)
+        if isinstance(payload, dict):
+            selected_payload = payload
+            break
+    if not selected_payload:
+        return None
+
+    start_value = (
+        selected_payload.get("startStr")
+        or selected_payload.get("dateStr")
+        or selected_payload.get("start")
+        or selected_payload.get("date")
+    )
+    end_value = selected_payload.get("endStr") or selected_payload.get("end") or start_value
+    start_date = parse_calendar_selection_date(start_value)
+    end_date = parse_calendar_selection_date(end_value)
+    if not start_date:
+        return None
+    if not end_date:
+        end_date = start_date
+
+    if end_date > start_date and (selected_payload.get("endStr") or selected_payload.get("end")):
+        end_date = end_date - timedelta(days=1)
+    if end_date < start_date:
+        end_date = start_date
+    return start_date, end_date
+
+
+def parse_calendar_selection_date(value):
+    if not has_value(value):
+        return None
+    if isinstance(value, str):
+        raw_value = value.strip()
+        if "T" not in raw_value and len(raw_value) >= 10:
+            date_part = raw_value[:10]
+            try:
+                return date.fromisoformat(date_part)
+            except ValueError:
+                pass
+    try:
+        parsed_value = pd.to_datetime(value)
+        if getattr(parsed_value, "tzinfo", None) is not None:
+            parsed_value = parsed_value.tz_convert("Asia/Taipei")
+        return parsed_value.date()
+    except Exception:
+        return None
 
 
 def render_schedule_table(
@@ -2416,6 +3531,11 @@ def student_page():
             "請確認 Supabase 的 athlete_blocks.athlete_id 是否等於這個 ID。"
         )
     else:
+        render_student_schedule_calendar(
+            selected_athlete["id"],
+            athlete_blocks_df,
+            blocks_df,
+        )
         render_schedule_table(
             athlete_blocks_df,
             blocks_df,
