@@ -192,6 +192,12 @@ def get_query_param(name):
     return value
 
 
+def clear_assignment_query_params():
+    for key in ("assign_athlete", "assign_date", "assign_ts"):
+        if key in st.query_params:
+            del st.query_params[key]
+
+
 def convert_recovery_hash_to_query_params():
     components.html(
         """
@@ -1534,8 +1540,8 @@ def render_new_athlete_form():
             col1, col2 = st.columns(2)
             name = col1.text_input("姓名")
             email = col2.text_input("Email")
-            sport = col1.text_input("運動項目")
-            level = col2.text_input("程度")
+            sport = st.text_input("運動項目")
+            level = ""
             submitted = st.form_submit_button("新增學員", use_container_width=True)
 
         if submitted:
@@ -1583,10 +1589,9 @@ def render_clickable_athlete_list(athletes_df):
         with st.container(border=True):
             st.markdown(f"### {athlete.get('name') or '未命名學員'}")
 
-            info_cols = st.columns([2, 1, 1])
+            info_cols = st.columns([2, 1])
             info_cols[0].markdown(f"**Email：** {athlete.get('email') or '-'}")
             info_cols[1].markdown(f"**運動項目：** {athlete.get('sport') or '-'}")
-            info_cols[2].markdown(f"**程度：** {athlete.get('level') or '-'}")
 
             action_cols = st.columns(3)
             if action_cols[0].button("查看課表", key=f"open_athlete_{athlete['id']}", use_container_width=True):
@@ -1669,14 +1674,17 @@ def render_delete_athlete_confirmation(athlete):
 
 
 def render_selected_athlete_page(athletes_df, athlete_id):
-    selected_rows = athletes_df[athletes_df["id"] == athlete_id]
+    athlete_id = to_plain_int(athlete_id)
+    selected_rows = athletes_df[athletes_df["id"].apply(to_plain_int) == athlete_id]
     if selected_rows.empty:
         st.session_state.pop("selected_athlete_id", None)
+        clear_assignment_query_params()
         st.warning("找不到這位學員，已返回學員列表。")
         st.rerun()
 
-    if st.button("返回學員列表"):
+    if st.button("返回學員列表", key="back_to_athlete_list"):
         st.session_state.pop("selected_athlete_id", None)
+        clear_assignment_query_params()
         st.rerun()
 
     st.divider()
@@ -2071,11 +2079,10 @@ def render_athlete_program_section(selected_athlete):
 
     with st.container(border=True):
         st.markdown(f"### {selected_athlete.get('name') or '未命名學員'}")
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         col1.write(f"Email：{selected_athlete.get('email') or '-'}")
         col2.write(f"運動項目：{selected_athlete.get('sport') or '-'}")
-        col3.write(f"程度：{selected_athlete.get('level') or '-'}")
-        col4.write(f"學員 ID：{selected_athlete.get('id') or '-'}")
+        col3.write(f"學員 ID：{selected_athlete.get('id') or '-'}")
 
     blocks_df, blocks_error = fetch_blocks()
     if blocks_error:
@@ -2456,10 +2463,9 @@ def render_frontend_schedule_calendar(
           return next;
         }}
 
-        function initialMonth(items) {{
-          const firstEvent = items.map((event) => parseIso(event.start)).find(Boolean);
-          const source = firstEvent || new Date();
-          return new Date(source.getFullYear(), source.getMonth(), 1);
+        function initialMonth() {{
+          const today = new Date();
+          return new Date(today.getFullYear(), today.getMonth(), 1);
         }}
 
         function eventDates(event) {{
@@ -3508,11 +3514,10 @@ def student_page():
 
     with st.container(border=True):
         st.markdown(f"### {selected_athlete.get('name') or '未命名學員'}")
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         col1.write(f"Email：{selected_athlete.get('email') or '-'}")
         col2.write(f"運動項目：{selected_athlete.get('sport') or '-'}")
-        col3.write(f"程度：{selected_athlete.get('level') or '-'}")
-        col4.write(f"學員 ID：{selected_athlete.get('id') or '-'}")
+        col3.write(f"學員 ID：{selected_athlete.get('id') or '-'}")
 
     blocks_df, blocks_error = fetch_blocks()
     if blocks_error:
