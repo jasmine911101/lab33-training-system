@@ -3843,6 +3843,7 @@ def student_page():
     st.title("我的課表")
     st.caption("查看自己目前被安排的訓練板塊")
     st.sidebar.caption(st.session_state.get("auth_email", ""))
+    render_change_password_section()
     logout_button()
 
     athletes_df, athletes_error = fetch_athletes()
@@ -3851,13 +3852,11 @@ def student_page():
         return
 
     if athletes_df.empty:
-        render_change_password_section()
         st.info("目前尚未建立學員。")
         return
 
     selected_athlete = find_logged_in_athlete(athletes_df)
     if not selected_athlete:
-        render_change_password_section()
         st.warning("找不到和這個登入帳號對應的學員資料。")
         st.info("請確認教練新增學員時填寫的 Email 和你的登入 Email 相同。")
         return
@@ -3866,8 +3865,6 @@ def student_page():
     if must_change_password:
         force_change_password_page(selected_athlete)
         return
-
-    render_change_password_section()
 
     with st.container(border=True):
         st.markdown(f"### {selected_athlete.get('name') or '未命名學員'}")
@@ -3897,13 +3894,6 @@ def student_page():
             selected_athlete["id"],
             athlete_blocks_df,
             blocks_df,
-        )
-        render_schedule_table(
-            athlete_blocks_df,
-            blocks_df,
-            show_block_details=True,
-            show_summary=False,
-            show_report=True,
         )
 
 
@@ -3940,8 +3930,8 @@ def force_change_password_page(selected_athlete):
 
 
 def render_change_password_section():
-    with st.expander("修改密碼"):
-        st.write("如果你想更換登入密碼，可以在這裡更新。")
+    with st.sidebar.expander("修改密碼", expanded=False):
+        st.caption("需要時再打開修改。")
         with st.form("change_password_form"):
             new_password = st.text_input("新 Password", type="password")
             confirm_password = st.text_input("確認新 Password", type="password")
