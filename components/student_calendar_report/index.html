@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Student Calendar Report</title>
+    <script src="./streamlit-bridge.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Source Sans Pro", sans-serif;
+      }
+      body {
+        color: #30333f;
+        margin: 0;
+      }
+      .lab33-calendar-root {
+        color: #30333f;
+      }
+      .lab33-cal-toolbar {
+        align-items: center;
+        display: flex;
+        gap: 0.75rem;
+        justify-content: space-between;
+        margin-bottom: 0.75rem;
+      }
+      .lab33-cal-title {
+        font-size: 1.15rem;
+        font-weight: 800;
+      }
+      .lab33-cal-nav,
+      .lab33-cal-tabs {
+        display: flex;
+        gap: 0.35rem;
+      }
+      .lab33-cal-toolbar button,
+      .lab33-detail-card button {
+        background: #fff;
+        border: 1px solid #d7d9df;
+        border-radius: 10px;
+        color: #30333f;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        padding: 0.45rem 0.7rem;
+      }
+      .lab33-cal-tabs button.active,
+      .lab33-detail-card button.primary {
+        background: #3e424b;
+        border-color: #3e424b;
+        color: #fff;
+      }
+      .lab33-cal-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+      }
+      .lab33-cal-weekdays > div {
+        border: 1px solid #e2e4e8;
+        border-bottom: 0;
+        font-weight: 800;
+        padding: 0.45rem;
+        text-align: center;
+      }
+      .lab33-cal-cell {
+        border: 1px solid #e2e4e8;
+        min-height: 118px;
+        padding: 0.35rem;
+      }
+      .lab33-cal-cell.muted {
+        color: #b7bbc4;
+      }
+      .lab33-cal-cell.today {
+        background: #fff9df;
+      }
+      .lab33-cal-day {
+        font-size: 0.95rem;
+        font-weight: 800;
+        margin-bottom: 0.35rem;
+        text-align: right;
+      }
+      .lab33-event {
+        background: #3e424b;
+        border: 2px solid #3e424b;
+        border-radius: 9px;
+        color: #fff;
+        cursor: pointer;
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 800;
+        margin: 0.22rem 0;
+        max-width: 100%;
+        overflow: hidden;
+        padding: 0.22rem 0.4rem;
+        text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        width: 100%;
+      }
+      .lab33-event.selected {
+        background: #24272d;
+        border-color: #f59e0b;
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.55);
+      }
+      .lab33-list-row {
+        align-items: center;
+        border: 1px solid #e2e4e8;
+        border-radius: 12px;
+        display: flex;
+        gap: 1rem;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+        padding: 0.75rem;
+      }
+      .lab33-list-row .lab33-event {
+        flex: 0 0 auto;
+        min-width: 120px;
+      }
+      .lab33-detail-card {
+        border: 1px solid #d7d9df;
+        border-radius: 14px;
+        margin-top: 1rem;
+        padding: 1rem;
+      }
+      .lab33-detail-card h3 {
+        font-size: 1.45rem;
+        margin: 0 0 0.45rem;
+      }
+      .lab33-muted {
+        color: #7f8490;
+      }
+      .lab33-goal {
+        background: #e9f3ff;
+        border-radius: 10px;
+        color: #0f4c81;
+        margin: 0.75rem 0;
+        padding: 0.75rem;
+      }
+      .lab33-section h4,
+      .lab33-report h4 {
+        margin: 1rem 0 0.45rem;
+      }
+      .lab33-table-wrap {
+        overflow-x: auto;
+      }
+      .lab33-table-wrap table {
+        border-collapse: collapse;
+        min-width: 920px;
+        width: 100%;
+      }
+      .lab33-table-wrap th,
+      .lab33-table-wrap td {
+        border: 1px solid #e2e4e8;
+        padding: 0.5rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      .lab33-table-wrap th {
+        background: #f6f7f9;
+        color: #7f8490;
+        font-weight: 700;
+      }
+      .lab33-table-wrap a {
+        color: #0068c9;
+        font-weight: 800;
+      }
+      .lab33-report-table input {
+        border: 1px solid #d7d9df;
+        border-radius: 8px;
+        box-sizing: border-box;
+        font: inherit;
+        min-width: 96px;
+        padding: 0.45rem 0.55rem;
+        width: 100%;
+      }
+      .lab33-editable {
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        cursor: text;
+        min-height: 1.6rem;
+        padding: 0.2rem 0.35rem;
+        transition: background-color 0.15s ease, border-color 0.15s ease;
+        white-space: pre-wrap;
+      }
+      .lab33-editable:hover {
+        background: #f8fafc;
+        border-color: #d7d9df;
+      }
+      .lab33-editable:focus {
+        background: #ffffff;
+        border-color: #3e424b;
+        box-shadow: 0 0 0 2px rgba(62, 66, 75, 0.12);
+        outline: none;
+      }
+      .lab33-editable.changed {
+        background: transparent;
+        border-color: transparent;
+        color: #a16207;
+        font-weight: 700;
+      }
+      .lab33-editable.empty::before {
+        content: "";
+      }
+      .lab33-report-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 0.85rem;
+      }
+      .lab33-empty {
+        background: #e9f3ff;
+        border-radius: 10px;
+        color: #0f4c81;
+        padding: 0.8rem;
+      }
+      @media (max-width: 640px) {
+        .lab33-cal-toolbar,
+        .lab33-list-row {
+          align-items: stretch;
+          flex-direction: column;
+        }
+        .lab33-cal-title {
+          text-align: center;
+        }
+        .lab33-cal-cell {
+          min-height: 86px;
+          padding: 0.25rem;
+        }
+        .lab33-cal-weekdays > div {
+          font-size: 0.8rem;
+          padding: 0.3rem 0.1rem;
+        }
+        .lab33-event {
+          font-size: 0.68rem;
+          padding: 0.16rem 0.28rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      const Streamlit = window.Streamlit
+      const root = document.getElementById("root")
+
+      let renderData = null
+      let state = {
+        view: "month",
+        selectedId: "",
+        currentMonth: null,
+      }
+
+      function parseIso(value) {
+        if (!value) return null
+        const parts = String(value).slice(0, 10).split("-").map(Number)
+        if (parts.length !== 3 || parts.some(Number.isNaN)) return null
+        return new Date(parts[0], parts[1] - 1, parts[2])
+      }
+
+      function isoDate(date) {
+        const y = date.getFullYear()
+        const m = String(date.getMonth() + 1).padStart(2, "0")
+        const d = String(date.getDate()).padStart(2, "0")
+        return `${y}-${m}-${d}`
+      }
+
+      function addDays(date, days) {
+        const next = new Date(date)
+        next.setDate(next.getDate() + days)
+        return next
+      }
+
+      function initialMonth() {
+        const today = new Date()
+        return new Date(today.getFullYear(), today.getMonth(), 1)
+      }
+
+      function eventDates(event) {
+        const start = parseIso(event.start)
+        if (!start) return []
+        const end = event.end ? parseIso(event.end) : null
+        const exclusiveEnd = end && end > start ? end : addDays(start, 1)
+        const dates = []
+        for (let day = new Date(start); day < exclusiveEnd; day = addDays(day, 1)) {
+          dates.push(isoDate(day))
+        }
+        return dates
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;")
+      }
+
+      function escapeAttr(value) {
+        return escapeHtml(value).replaceAll("`", "&#096;")
+      }
+
+      function eventsByDate(events) {
+        const grouped = {}
+        events.forEach((event) => {
+          eventDates(event).forEach((dateKey) => {
+            grouped[dateKey] ||= []
+            grouped[dateKey].push(event)
+          })
+        })
+        return grouped
+      }
+
+      function eventButton(event) {
+        const id = String(event.id)
+        const isSelected = state.selectedId === id
+        const title = escapeHtml(event.title || "課表")
+        return `<button type="button" class="lab33-event ${isSelected ? "selected" : ""}" data-event-id="${escapeAttr(id)}">${title}</button>`
+      }
+
+      function renderSections(sections) {
+        if (!sections.length) return `<div class="lab33-empty">這個板塊目前沒有詳細動作內容。</div>`
+        const changedClass = (row, field) => (row.changed_fields || []).includes(field) ? "changed" : ""
+        return sections.map((section) => `
+          <section class="lab33-section">
+            <h4>${escapeHtml(section.name || "未命名區段")}</h4>
+            <div class="lab33-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>動作</th><th>組數</th><th>次數/時間</th><th>工具</th><th>強度</th><th>重量</th><th>休息時間</th><th>影片連結</th><th>備註</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(section.rows || []).map((row) => `
+                    <tr>
+                      <td>
+                        ${row.can_report ? `
+                          <div
+                            class="lab33-editable ${row.exercise_name ? "" : "empty"} ${changedClass(row, "exercise_name")}"
+                            contenteditable="true"
+                            data-field="exercise_name"
+                            data-row-id="${escapeAttr(row.id)}"
+                          >${escapeHtml(row.exercise_name || "")}</div>
+                        ` : `${escapeHtml(row.exercise_name)}`}
+                      </td>
+                      <td>
+                        ${row.can_report ? `
+                          <div
+                            class="lab33-editable ${row.sets ? "" : "empty"} ${changedClass(row, "sets")}"
+                            contenteditable="true"
+                            data-field="sets"
+                            data-row-id="${escapeAttr(row.id)}"
+                          >${escapeHtml(row.sets || "")}</div>
+                        ` : `${escapeHtml(row.sets)}`}
+                      </td>
+                      <td>
+                        ${row.can_report ? `
+                          <div
+                            class="lab33-editable ${row.reps_or_time ? "" : "empty"} ${changedClass(row, "reps_or_time")}"
+                            contenteditable="true"
+                            data-field="reps_or_time"
+                            data-row-id="${escapeAttr(row.id)}"
+                          >${escapeHtml(row.reps_or_time || "")}</div>
+                        ` : `${escapeHtml(row.reps_or_time)}`}
+                      </td>
+                      <td>
+                        ${row.can_report ? `
+                          <div
+                            class="lab33-editable ${row.equipment ? "" : "empty"} ${changedClass(row, "equipment")}"
+                            contenteditable="true"
+                            data-field="equipment"
+                            data-row-id="${escapeAttr(row.id)}"
+                          >${escapeHtml(row.equipment || "")}</div>
+                        ` : `${escapeHtml(row.equipment)}`}
+                      </td>
+                      <td>
+                        ${row.can_report ? `
+                          <div
+                            class="lab33-editable ${row.intensity ? "" : "empty"} ${changedClass(row, "intensity")}"
+                            contenteditable="true"
+                            data-field="intensity"
+                            data-row-id="${escapeAttr(row.id)}"
+                          >${escapeHtml(row.intensity || "")}</div>
+                        ` : `${escapeHtml(row.intensity)}`}
+                      </td>
+                      <td>
+                        ${row.can_report ? `
+                          <div
+                            class="lab33-editable ${row.weight ? "" : "empty"} ${changedClass(row, "weight")}"
+                            contenteditable="true"
+                            data-field="weight"
+                            data-row-id="${escapeAttr(row.id)}"
+                          >${escapeHtml(row.weight || "")}</div>
+                        ` : `${escapeHtml(row.weight)}`}
+                      </td>
+                      <td>
+                        ${row.can_report ? `
+                          <div
+                            class="lab33-editable ${row.rest ? "" : "empty"} ${changedClass(row, "rest")}"
+                            contenteditable="true"
+                            data-field="rest"
+                            data-row-id="${escapeAttr(row.id)}"
+                          >${escapeHtml(row.rest || "")}</div>
+                        ` : `${escapeHtml(row.rest)}`}
+                      </td>
+                      <td>
+                        ${row.can_report ? `
+                          <div
+                            class="lab33-editable ${row.video_url ? "" : "empty"} ${changedClass(row, "video_url")}"
+                            contenteditable="true"
+                            data-field="video_url"
+                            data-row-id="${escapeAttr(row.id)}"
+                          >${escapeHtml(row.video_url || "")}</div>
+                        ` : `${row.video_url ? `<a href="${escapeAttr(row.video_url)}" target="_blank" rel="noopener noreferrer">觀看影片</a>` : ""}`}
+                      </td>
+                      <td>
+                        ${row.can_report ? `
+                          <div
+                            class="lab33-editable ${row.notes ? "" : "empty"} ${changedClass(row, "notes")}"
+                            contenteditable="true"
+                            data-field="notes"
+                            data-row-id="${escapeAttr(row.id)}"
+                          >${escapeHtml(row.notes || "")}</div>
+                        ` : `${escapeHtml(row.notes)}`}
+                      </td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        `).join("")
+      }
+
+      function renderList(events, details) {
+        if (!events.length) return `<div class="lab33-empty">目前沒有課表。</div>`
+        return events.map((event) => {
+          const detail = details[String(event.id)] || {}
+          const meta = [
+            detail.date_range,
+            detail.block_label,
+          ].filter(Boolean).join("｜")
+          return `<div class="lab33-list-row">
+            <div><strong>${escapeHtml(event.title || "")}</strong><div class="lab33-muted">${escapeHtml(meta)}</div></div>
+            ${eventButton(event)}
+          </div>`
+        }).join("")
+      }
+
+      function renderMonth(events) {
+        const grouped = eventsByDate(events)
+        const firstDay = new Date(state.currentMonth)
+        const offset = (firstDay.getDay() + 6) % 7
+        const gridStart = addDays(firstDay, -offset)
+        const weekdayLabels = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
+        let html = `<div class="lab33-cal-grid lab33-cal-weekdays">`
+        weekdayLabels.forEach((label) => { html += `<div>${label}</div>` })
+        html += `</div><div class="lab33-cal-grid">`
+        for (let i = 0; i < 42; i += 1) {
+          const day = addDays(gridStart, i)
+          const dateKey = isoDate(day)
+          const isCurrentMonth = day.getMonth() === state.currentMonth.getMonth()
+          const isToday = dateKey === isoDate(new Date())
+          html += `<div class="lab33-cal-cell ${isCurrentMonth ? "" : "muted"} ${isToday ? "today" : ""}">`
+          html += `<div class="lab33-cal-day">${day.getDate()}日</div>`
+          ;(grouped[dateKey] || []).forEach((event) => { html += eventButton(event) })
+          html += `</div>`
+        }
+        html += `</div>`
+        return html
+      }
+
+      function renderDetail(details) {
+        if (!state.selectedId) return ""
+        const detail = details[String(state.selectedId)]
+        if (!detail) return ""
+        return `
+          <div class="lab33-detail-card">
+            <h3>${escapeHtml(detail.block_label || "課表")}</h3>
+            <div class="lab33-muted">${escapeHtml(detail.meta || "")}</div>
+            ${(detail.event_name || detail.date_range) ? `<p class="lab33-muted">賽事/事件：${escapeHtml(detail.event_name || "-")}｜日期：${escapeHtml(detail.date_range || "-")}</p>` : ""}
+            ${detail.cycle_goal ? `<div class="lab33-goal"><strong>週期目標：</strong>${escapeHtml(detail.cycle_goal)}</div>` : ""}
+            ${detail.goal ? `<p><strong>目標：</strong>${escapeHtml(detail.goal)}</p>` : ""}
+            ${detail.training_element ? `<p><strong>訓練元素：</strong>${escapeHtml(detail.training_element)}</p>` : ""}
+            ${detail.description ? `<p class="lab33-muted">描述：${escapeHtml(detail.description)}</p>` : ""}
+            ${renderSections(detail.sections || [])}
+            ${detail.can_report ? `
+              <div class="lab33-report-actions">
+                <button type="button" class="primary" data-save-report="${escapeAttr(state.selectedId)}">儲存回報</button>
+              </div>
+            ` : `<div class="lab33-empty">這個板塊目前沒有可回報的學員專屬動作內容。</div>`}
+          </div>
+        `
+      }
+
+      function setComponentValue(payload) {
+        Streamlit.setComponentValue({
+          ...payload,
+          action_id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        })
+      }
+
+      function saveReport(assignmentId) {
+        const inputs = Array.from(root.querySelectorAll("[data-row-id][data-field]"))
+        const grouped = {}
+        inputs.forEach((input) => {
+          const rowId = input.dataset.rowId
+          if (!grouped[rowId]) grouped[rowId] = { id: rowId }
+          grouped[rowId][input.dataset.field] = (input.textContent || "").trim()
+        })
+        setComponentValue({
+          type: "save_report",
+          assignment_id: assignmentId || "",
+          rows: Object.values(grouped),
+        })
+      }
+
+      function render() {
+        if (!renderData) return
+        const args = renderData.args || {}
+        const events = args.events || []
+        const details = args.details || {}
+        root.innerHTML = `
+          <div class="lab33-calendar-root">
+            <div class="lab33-cal-toolbar">
+              <div class="lab33-cal-nav">
+                <button type="button" data-action="prev">‹</button>
+                <button type="button" data-action="today">今天</button>
+                <button type="button" data-action="next">›</button>
+              </div>
+              <div class="lab33-cal-title">${state.currentMonth.getFullYear()} 年 ${state.currentMonth.getMonth() + 1} 月</div>
+              <div class="lab33-cal-tabs">
+                <button type="button" data-view="month" class="${state.view === "month" ? "active" : ""}">月</button>
+                <button type="button" data-view="list" class="${state.view === "list" ? "active" : ""}">清單</button>
+              </div>
+            </div>
+            <div class="lab33-cal-month" ${state.view === "month" ? "" : "hidden"}>${renderMonth(events)}</div>
+            <div class="lab33-cal-list" ${state.view === "list" ? "" : "hidden"}>${renderList(events, details)}</div>
+            ${renderDetail(details)}
+          </div>
+        `
+        Streamlit.setFrameHeight(document.documentElement.scrollHeight)
+      }
+
+      function onRender(event) {
+        renderData = event.detail
+        const args = renderData.args || {}
+        const incomingSelectedId = String(args.selectedAssignmentId || "")
+        if (!state.currentMonth) {
+          state.currentMonth = initialMonth()
+        }
+        state.selectedId = incomingSelectedId
+        render()
+      }
+
+      root.addEventListener("click", (event) => {
+        const eventButtonNode = event.target.closest("[data-event-id]")
+        if (eventButtonNode) {
+          const id = eventButtonNode.dataset.eventId || ""
+          const nextId = state.selectedId === id ? "" : id
+          setComponentValue({
+            type: "select_assignment",
+            assignment_id: nextId,
+          })
+          return
+        }
+
+        const saveButton = event.target.closest("[data-save-report]")
+        if (saveButton) {
+          saveReport(saveButton.dataset.saveReport || "")
+          return
+        }
+
+        const actionButton = event.target.closest("[data-action]")
+        if (actionButton) {
+          const action = actionButton.dataset.action
+          if (action === "prev") state.currentMonth.setMonth(state.currentMonth.getMonth() - 1)
+          if (action === "next") state.currentMonth.setMonth(state.currentMonth.getMonth() + 1)
+          if (action === "today") state.currentMonth = initialMonth()
+          render()
+          return
+        }
+
+        const viewButton = event.target.closest("[data-view]")
+        if (viewButton) {
+          state.view = viewButton.textContent === "清單" ? "list" : "month"
+          render()
+        }
+      })
+
+      root.addEventListener("focusin", (event) => {
+        const editable = event.target.closest(".lab33-editable")
+        if (!editable) return
+        editable.classList.remove("empty")
+      })
+
+      root.addEventListener("focusout", (event) => {
+        const editable = event.target.closest(".lab33-editable")
+        if (!editable) return
+        if (!(editable.textContent || "").trim()) {
+          editable.classList.add("empty")
+        }
+      })
+
+      root.addEventListener("keydown", (event) => {
+        const editable = event.target.closest(".lab33-editable")
+        if (!editable) return
+        if (event.key === "Enter") {
+          event.preventDefault()
+          editable.blur()
+        }
+      })
+
+      window.addEventListener("load", () => {
+        Streamlit.setComponentReady()
+        Streamlit.setFrameHeight(document.documentElement.scrollHeight)
+      })
+      window.addEventListener("resize", () => {
+        Streamlit.setFrameHeight(document.documentElement.scrollHeight)
+      })
+      Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender)
+    </script>
+  </body>
+</html>
