@@ -1,0 +1,55 @@
+import { redirect } from 'next/navigation'
+
+import { CoachRegistrationForm } from '@/components/auth/coach-registration-form'
+import { LoginForm } from '@/components/auth/login-form'
+import { getAppContextForUser } from '@/lib/auth/roles'
+import { getAuthenticatedUser } from '@/lib/auth/session'
+import { getCoachRegistrationAvailability } from '@/services/coach-auth'
+
+export default async function CoachLoginPage() {
+  const user = await getAuthenticatedUser()
+
+  if (user) {
+    const context = await getAppContextForUser(user)
+    if (context.hasCoachAccess) {
+      redirect('/coach')
+    }
+    if (context.hasStudentAccess) {
+      redirect('/student')
+    }
+    redirect('/dashboard')
+  }
+
+  const registration = getCoachRegistrationAvailability()
+
+  return (
+    <main className="min-h-screen bg-stone-950 px-4 py-10 text-white sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="rounded-[2rem] bg-[linear-gradient(145deg,#1c1917,#3f3f46)] p-8 shadow-2xl">
+          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-stone-300">Coach Portal</p>
+          <h1 className="mt-4 text-4xl font-black tracking-tight">教練端登入</h1>
+          <p className="mt-4 max-w-xl text-sm leading-7 text-stone-300 sm:text-base">
+            登入後會進入教練端頁面，再依照目前資料是否具備教練權限進行驗證，不會只靠登入入口決定身份。
+          </p>
+        </section>
+        <section className="grid gap-5 rounded-[2rem] bg-white p-6 text-stone-900 shadow-2xl">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">登入</p>
+            <div className="mt-3">
+              <LoginForm mode="coach" />
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">註冊教練</p>
+            <div className="mt-3">
+              <CoachRegistrationForm
+                inviteCodeConfigured={registration.inviteCodeConfigured}
+                serviceRoleConfigured={registration.serviceRoleConfigured}
+              />
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  )
+}

@@ -17,3 +17,11 @@ grant select, insert, update, delete on table public.athlete_programs to anon;
 grant select, insert, update, delete on table public.athlete_program_blocks to anon;
 
 grant usage, select on all sequences in schema public to anon;
+
+
+alter table public.athlete_events disable row level security;
+grant select, insert, update, delete on table public.athlete_events to anon;
+
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on table public.athlete_events to anon, authenticated;
+grant usage, select on all sequences in schema public to anon, authenticated;

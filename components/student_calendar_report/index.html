@@ -317,8 +317,8 @@
         return `<button type="button" class="lab33-event ${isSelected ? "selected" : ""}" data-event-id="${escapeAttr(id)}">${title}</button>`
       }
 
-      function renderSections(sections) {
-        if (!sections.length) return `<div class="lab33-empty">這個板塊目前沒有詳細動作內容。</div>`
+      function renderSections(sections, emptyMessage) {
+        if (!sections.length) return `<div class="lab33-empty">${escapeHtml(emptyMessage || "這個板塊目前沒有詳細動作內容。")}</div>`
         const changedClass = (row, field) => (row.changed_fields || []).includes(field) ? "changed" : ""
         return sections.map((section) => `
           <section class="lab33-section">
@@ -433,7 +433,7 @@
       }
 
       function renderList(events, details) {
-        if (!events.length) return `<div class="lab33-empty">目前沒有課表。</div>`
+        if (!events.length) return `<div class="lab33-empty">目前沒有安排。</div>`
         return events.map((event) => {
           const detail = details[String(event.id)] || {}
           const meta = [
@@ -483,12 +483,12 @@
             ${detail.goal ? `<p><strong>目標：</strong>${escapeHtml(detail.goal)}</p>` : ""}
             ${detail.training_element ? `<p><strong>訓練元素：</strong>${escapeHtml(detail.training_element)}</p>` : ""}
             ${detail.description ? `<p class="lab33-muted">描述：${escapeHtml(detail.description)}</p>` : ""}
-            ${renderSections(detail.sections || [])}
+            ${renderSections(detail.sections || [], detail.empty_message || "這個板塊目前沒有詳細動作內容。")}
             ${detail.can_report ? `
               <div class="lab33-report-actions">
                 <button type="button" class="primary" data-save-report="${escapeAttr(state.selectedId)}">儲存回報</button>
               </div>
-            ` : `<div class="lab33-empty">這個板塊目前沒有可回報的學員專屬動作內容。</div>`}
+            ` : detail.kind === "general_event" ? "" : `<div class="lab33-empty">這個板塊目前沒有可回報的學員專屬動作內容。</div>`}
           </div>
         `
       }
