@@ -34,7 +34,7 @@ export default async function CoachBlocksPage() {
   return (
     <AppShell
       title="板塊管理"
-      description="搬移 Streamlit 的板塊模板管理流程。這一階段已補上手動建立、查看詳細內容、刪除板塊，以及 Excel 多工作表匯入。"
+      description="集中管理板塊模板，支援手動建立、查看詳細內容、刪除與 Excel 多工作表匯入。"
       role="coach"
       userEmail={context.user.email}
       roleLabel={roleLabel}

@@ -10,6 +10,7 @@ type AppShellProps = {
   userEmail?: string | null
   roleLabel: string
   currentPath: string
+  hideHeaderCard?: boolean
   children: React.ReactNode
 }
 
@@ -68,7 +69,7 @@ function NavLinks({ items, currentPath }: { items: NavItem[]; currentPath: strin
   )
 }
 
-export function AppShell({ title, description, role, userEmail, roleLabel, currentPath, children }: AppShellProps) {
+export function AppShell({ title, description, role, userEmail, roleLabel, currentPath, hideHeaderCard = false, children }: AppShellProps) {
   const navItems = getNavItems(role)
 
   return (
@@ -97,12 +98,10 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
             </div>
           </div>
 
-          <div className="lab-shell-panel">
-            <p className="lab-eyebrow">登入資訊</p>
-            <div className="mt-4 space-y-3">
+          <div className="lab-shell-panel lg:mt-auto">
+            <div className="space-y-3">
               <span className={role === 'coach' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
               <p className="text-sm font-semibold text-slate-800">{userEmail ?? '未登入'}</p>
-              <p className="text-sm text-slate-500">沿用現有 Supabase Authentication，route protection 保持不變。</p>
             </div>
             <div className="mt-5">
               <LogoutButton />
@@ -119,21 +118,23 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
             <span className={role === 'coach' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
           </header>
 
-          <div className="lab-card overflow-hidden p-6 sm:p-7">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <div className="max-w-3xl">
-                <p className="lab-eyebrow">Logged In Experience</p>
-                <h2 className="lab-section-title mt-3">{title}</h2>
-                <p className="lab-copy mt-3">{description}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={role === 'coach' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
-                <span className="lab-badge bg-slate-100 text-slate-600">{userEmail ?? '未登入'}</span>
+          {hideHeaderCard ? null : (
+            <div className="lab-card overflow-hidden p-6 sm:p-7">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div className="max-w-3xl">
+                  <p className="lab-eyebrow">Logged In Experience</p>
+                  <h2 className="lab-section-title mt-3">{title}</h2>
+                  <p className="lab-copy mt-3">{description}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={role === 'coach' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
+                  <span className="lab-badge bg-slate-100 text-slate-600">{userEmail ?? '未登入'}</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          <main className="mt-6 flex-1">{children}</main>
+          <main className={`${hideHeaderCard ? '' : 'mt-6'} flex-1`}>{children}</main>
         </div>
       </div>
 

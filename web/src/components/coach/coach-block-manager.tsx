@@ -395,7 +395,7 @@ export function CoachBlockManager({ initialBlocks }: CoachBlockManagerProps) {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
         <article className="lab-stat-card">
           <p className="lab-eyebrow">Blocks</p>
           <p className="mt-3 font-display text-4xl leading-none text-slate-900">{totalBlocks}</p>
@@ -403,16 +403,6 @@ export function CoachBlockManager({ initialBlocks }: CoachBlockManagerProps) {
         <article className="lab-stat-card">
           <p className="lab-eyebrow">Exercises</p>
           <p className="mt-3 font-display text-4xl leading-none text-slate-900">{totalExercises}</p>
-        </article>
-        <article className="lab-stat-card">
-          <p className="lab-eyebrow">Phase</p>
-          <p className="mt-3 text-sm font-semibold text-slate-900">Phase 9</p>
-          <p className="mt-2 text-sm text-slate-500">Excel 匯入與收尾</p>
-        </article>
-        <article className="lab-stat-card">
-          <p className="lab-eyebrow">Next Step</p>
-          <p className="mt-3 text-sm font-semibold text-slate-900">Migration</p>
-          <p className="mt-2 text-sm text-slate-500">Next.js 主要功能已完成</p>
         </article>
       </section>
 
@@ -593,9 +583,8 @@ export function CoachBlockManager({ initialBlocks }: CoachBlockManagerProps) {
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="lab-section-title">直接填寫板塊模板</h2>
-            <p className="lab-copy mt-3">依照 LAB33 現有模板手動輸入區段與動作。這一階段先完成手動建立、查看詳細內容與刪除板塊。</p>
+            <p className="lab-copy mt-3">依照 LAB33 現有模板手動輸入區段與動作，建立可重複使用的板塊內容。</p>
           </div>
-          <span className="lab-badge-info">Excel 匯入會留到 Phase 9</span>
         </div>
 
         <div className="mt-6 grid gap-4 xl:grid-cols-2">

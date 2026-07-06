@@ -133,6 +133,7 @@ export function CoachAthleteManager({ initialAthletes, assignableCoaches, isHead
   const [athletes, setAthletes] = useState(initialAthletes)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterValue>('all')
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [createName, setCreateName] = useState('')
   const [createEmail, setCreateEmail] = useState('')
   const [createSport, setCreateSport] = useState('')
@@ -287,70 +288,86 @@ export function CoachAthleteManager({ initialAthletes, assignableCoaches, isHead
 
   return (
     <div className="space-y-6">
-      <article className="lab-card p-6 sm:p-7">
-        <p className="lab-eyebrow">New Athlete</p>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <article className="lab-card p-5 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="lab-section-title">新增學員</h2>
-            <p className="lab-copy mt-3">
-              新學員建立時會同時建立或連結 Supabase Auth 帳號，並產生臨時密碼。一般教練新增後會自動指派給自己；總教練可先保留未指派或直接指派給教練。
-            </p>
+            <p className="lab-eyebrow">New Athlete</p>
+            <h2 className="mt-2 text-3xl font-bold leading-none text-slate-900">新增學員</h2>
+            {isCreateOpen ? (
+              <p className="mt-3 text-sm leading-7 text-slate-600">
+                新學員建立時會同時建立或連結 Supabase Auth 帳號，並產生臨時密碼。一般教練新增後會自動指派給自己；總教練可先保留未指派或直接指派給教練。
+              </p>
+            ) : null}
           </div>
-          <span className={isHeadCoach ? 'lab-badge-primary' : 'lab-badge-info'}>
-            {isHeadCoach ? '總教練可跨教練分派' : '一般教練自動綁定自己'}
-          </span>
-        </div>
-
-        <form className="mt-6 grid gap-4" onSubmit={handleCreateAthlete}>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700" htmlFor="athlete-name">姓名</label>
-              <input id="athlete-name" className="lab-input" value={createName} onChange={(event) => setCreateName(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700" htmlFor="athlete-email">Email</label>
-              <input id="athlete-email" type="email" className="lab-input" value={createEmail} onChange={(event) => setCreateEmail(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700" htmlFor="athlete-sport">運動項目</label>
-              <input id="athlete-sport" className="lab-input" value={createSport} onChange={(event) => setCreateSport(event.target.value)} />
-            </div>
-          </div>
-
-          {isHeadCoach ? (
-            <div className="space-y-3">
-              <p className="text-sm font-semibold text-slate-700">建立後直接指派給教練</p>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {assignableCoaches.map((coach) => (
-                  <label key={coach.id} className="flex items-center gap-3 rounded-[1rem] border border-slate-200 px-4 py-3 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={selectedCreateCoachIds.includes(coach.id)}
-                      onChange={() => toggleCreateCoach(coach.id)}
-                    />
-                    <span>{coachDisplayName(coach)}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {createError ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{createError}</p> : null}
-          {createSuccess ? <p className="rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{createSuccess}</p> : null}
-          {createdTempPassword ? (
-            <div className="rounded-[1.25rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-              <p className="font-semibold">請把這組臨時密碼交給學員</p>
-              <p className="mt-2">Email：{createdTempPassword.email}</p>
-              <p className="mt-1 font-mono">Temporary Password：{createdTempPassword.password}</p>
-            </div>
-          ) : null}
-
-          <div>
-            <button type="submit" className="lab-btn-primary w-full sm:w-auto" disabled={isCreating}>
-              {isCreating ? '建立中...' : '新增學員'}
+          <div className="flex flex-wrap items-center gap-2">
+            {isCreateOpen ? (
+              <span className={isHeadCoach ? 'lab-badge-primary' : 'lab-badge-info'}>
+                {isHeadCoach ? '總教練可跨教練分派' : '一般教練自動綁定自己'}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
+              onClick={() => setIsCreateOpen((current) => !current)}
+              aria-expanded={isCreateOpen}
+            >
+              {isCreateOpen ? '收起' : '展開'}
             </button>
           </div>
-        </form>
+        </div>
+
+        {isCreateOpen ? (
+          <form className="mt-6 grid gap-4" onSubmit={handleCreateAthlete}>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700" htmlFor="athlete-name">姓名</label>
+                <input id="athlete-name" className="lab-input" value={createName} onChange={(event) => setCreateName(event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700" htmlFor="athlete-email">Email</label>
+                <input id="athlete-email" type="email" className="lab-input" value={createEmail} onChange={(event) => setCreateEmail(event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700" htmlFor="athlete-sport">運動項目</label>
+                <input id="athlete-sport" className="lab-input" value={createSport} onChange={(event) => setCreateSport(event.target.value)} />
+              </div>
+            </div>
+
+            {isHeadCoach ? (
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-slate-700">建立後直接指派給教練</p>
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {assignableCoaches.map((coach) => (
+                    <label key={coach.id} className="flex items-center gap-3 rounded-[1rem] border border-slate-200 px-4 py-3 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={selectedCreateCoachIds.includes(coach.id)}
+                        onChange={() => toggleCreateCoach(coach.id)}
+                      />
+                      <span>{coachDisplayName(coach)}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {createError ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{createError}</p> : null}
+            {createSuccess ? <p className="rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{createSuccess}</p> : null}
+            {createdTempPassword ? (
+              <div className="rounded-[1.25rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+                <p className="font-semibold">請把這組臨時密碼交給學員</p>
+                <p className="mt-2">Email：{createdTempPassword.email}</p>
+                <p className="mt-1 font-mono">Temporary Password：{createdTempPassword.password}</p>
+              </div>
+            ) : null}
+
+            <div>
+              <button type="submit" className="lab-btn-primary w-full sm:w-auto" disabled={isCreating}>
+                {isCreating ? '建立中...' : '新增學員'}
+              </button>
+            </div>
+          </form>
+        ) : null}
       </article>
 
       <article className="lab-card p-6 sm:p-7">
@@ -358,7 +375,7 @@ export function CoachAthleteManager({ initialAthletes, assignableCoaches, isHead
         <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="lab-section-title">學員列表</h2>
-            <p className="lab-copy mt-3">
+            <p className="mt-3 text-sm leading-7 text-slate-600">
               {isHeadCoach
                 ? '總教練可查看全部學員、快速篩選未指派學員，並直接在列表中調整教練指派。'
                 : '一般教練只會看到 coach_athletes 中已指派給自己的學員，不能查看或操作其他教練的學生。'}
@@ -403,9 +420,9 @@ export function CoachAthleteManager({ initialAthletes, assignableCoaches, isHead
               const isBusy = actionLoadingId === athlete.id
 
               return (
-                <article key={athlete.id} className="lab-card-muted p-5">
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="min-w-0 flex-1">
+                <article key={athlete.id} className="lab-card-muted p-5 sm:p-6">
+                  <div className="min-w-0">
+                    <div className="flex flex-col gap-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <h3 className="text-xl font-bold text-slate-900">{athlete.name ?? '未命名學員'}</h3>
@@ -462,18 +479,18 @@ export function CoachAthleteManager({ initialAthletes, assignableCoaches, isHead
                           <p className="mt-1 font-mono">Temporary Password：{athleteTempPassword.password}</p>
                         </div>
                       ) : null}
-                    </div>
 
-                    <div className="flex w-full flex-col gap-3 xl:w-64">
-                      <Link href={`/coach/athletes/${athlete.id}`} className="lab-btn-primary w-full">
-                        查看課表
-                      </Link>
-                      <button type="button" className="lab-btn-secondary w-full" disabled={isBusy} onClick={() => setConfirmResetId((current) => (current === athlete.id ? null : athlete.id))}>
-                        {confirmResetId === athlete.id ? '收起重設確認' : '重設臨時密碼'}
-                      </button>
-                      <button type="button" className="lab-btn-secondary w-full" disabled={isBusy} onClick={() => setConfirmDeleteId((current) => (current === athlete.id ? null : athlete.id))}>
-                        {confirmDeleteId === athlete.id ? '收起刪除確認' : '刪除學員'}
-                      </button>
+                      <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                        <Link href={`/coach/athletes/${athlete.id}`} className="lab-btn-primary w-full">
+                          查看課表
+                        </Link>
+                        <button type="button" className="lab-btn-secondary w-full sm:w-auto" disabled={isBusy} onClick={() => setConfirmResetId((current) => (current === athlete.id ? null : athlete.id))}>
+                          {confirmResetId === athlete.id ? '收起重設確認' : '重設臨時密碼'}
+                        </button>
+                        <button type="button" className="lab-btn-secondary w-full sm:w-auto" disabled={isBusy} onClick={() => setConfirmDeleteId((current) => (current === athlete.id ? null : athlete.id))}>
+                          {confirmDeleteId === athlete.id ? '收起刪除確認' : '刪除學員'}
+                        </button>
+                      </div>
                     </div>
                   </div>
 
