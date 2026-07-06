@@ -1,6 +1,5 @@
 import { ProfileStatusCard } from '@/components/auth/profile-status-card'
 import { CoachAthleteManager } from '@/components/coach/coach-athlete-manager'
-import { CoachDashboardHeader } from '@/components/coach/coach-dashboard-header'
 import { AppShell } from '@/components/layout/app-shell'
 import { requireCoachAccess } from '@/lib/auth/roles'
 import { getCoachManagementSnapshot } from '@/services/coach-management'
@@ -31,7 +30,6 @@ export default async function CoachHomePage() {
 
   const roleLabel = coachProfile.is_head_coach ? '總教練' : '教練'
   const managementSnapshot = await getCoachManagementSnapshot(coachProfile)
-  const athletes = managementSnapshot.athletes
 
   return (
     <AppShell
@@ -43,20 +41,14 @@ export default async function CoachHomePage() {
       currentPath="/coach"
       hideHeaderCard
     >
-      <CoachDashboardHeader
+      <CoachAthleteManager
         roleLabel={roleLabel}
-        athleteCount={athletes.length}
         userEmail={context.user.email}
         coachName={coachProfile.name ?? coachProfile.email ?? null}
+        initialAthletes={managementSnapshot.athletes}
+        assignableCoaches={managementSnapshot.assignableCoaches}
+        isHeadCoach={coachProfile.is_head_coach === true}
       />
-
-      <section className="mt-6">
-        <CoachAthleteManager
-          initialAthletes={managementSnapshot.athletes}
-          assignableCoaches={managementSnapshot.assignableCoaches}
-          isHeadCoach={coachProfile.is_head_coach === true}
-        />
-      </section>
     </AppShell>
   )
 }

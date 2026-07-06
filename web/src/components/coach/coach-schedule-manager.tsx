@@ -35,6 +35,26 @@ type EventFormState = {
   notes: string
 }
 
+type EditableExercise = {
+  localId: string
+  persisted: boolean
+  sourceId: string
+  exercise_name: string
+  sets: string
+  reps_or_time: string
+  equipment: string
+  intensity: string
+  weight: string
+  rest: string
+  video_url: string
+  notes: string
+}
+
+type EditableSection = {
+  name: string
+  rows: EditableExercise[]
+}
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -93,10 +113,40 @@ function DetailMeta({ label, value }: { label: string; value: string }) {
   )
 }
 
+function makeLocalId() {
+  return `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function buildEditableSections(assignment: AssignmentDetail): EditableSection[] {
+  if (assignment.sections.length === 0) {
+    return [{ name: '未命名區段', rows: [] }]
+  }
+
+  return assignment.sections.map((section) => ({
+    name: section.name || '未命名區段',
+    rows: section.rows.map((row) => ({
+      localId: makeLocalId(),
+      persisted: row.can_report,
+      sourceId: row.id,
+      exercise_name: row.exercise_name,
+      sets: row.sets,
+      reps_or_time: row.reps_or_time,
+      equipment: row.equipment,
+      intensity: row.intensity,
+      weight: row.weight,
+      rest: row.rest,
+      video_url: row.video_url,
+      notes: row.notes,
+    })),
+  }))
+}
+
 function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: AssignmentDetail; athleteId: number; onUpdated: (schedule: AthleteScheduleBundle, message?: string) => void }) {
   const [isEditing, setIsEditing] = useState(false)
+  const [isEditingContent, setIsEditingContent] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isSavingContent, setIsSavingContent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [eventName, setEventName] = useState(assignment.event_name)
   const [cycleGoal, setCycleGoal] = useState(assignment.cycle_goal)
@@ -106,6 +156,83 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
   const [dayNum, setDayNum] = useState(String(assignment.day_num ?? 1))
   const [trainingCategory, setTrainingCategory] = useState(assignment.training_category || TRAINING_CATEGORIES[0])
   const [notes, setNotes] = useState(assignment.coach_notes)
+  const [editableSections, setEditableSections] = useState<EditableSection[]>(() => buildEditableSections(assignment))
+
+  function resetAssignmentForm() {
+    setEventName(assignment.event_name)
+    setCycleGoal(assignment.cycle_goal)
+    setStartDate(assignment.start_date || todayIso())
+    setEndDate(assignment.end_date || assignment.start_date || todayIso())
+    setWeekNum(String(assignment.week_num ?? 1))
+    setDayNum(String(assignment.day_num ?? 1))
+    setTrainingCategory(assignment.training_category || TRAINING_CATEGORIES[0])
+    setNotes(assignment.coach_notes)
+  }
+
+  function resetAssignmentContentForm() {
+    setEditableSections(buildEditableSections(assignment))
+  }
+
+  function updateExercise(sectionIndex: number, rowLocalId: string, field: keyof Omit<EditableExercise, 'localId' | 'persisted' | 'sourceId'>, value: string) {
+    setEditableSections((current) =>
+      current.map((section, currentSectionIndex) =>
+        currentSectionIndex !== sectionIndex
+          ? section
+          : {
+              ...section,
+              rows: section.rows.map((row) => (row.localId === rowLocalId ? { ...row, [field]: value } : row)),
+            },
+      ),
+    )
+  }
+
+  function addExercise(sectionIndex: number) {
+    setEditableSections((current) =>
+      current.map((section, currentSectionIndex) =>
+        currentSectionIndex !== sectionIndex
+          ? section
+          : {
+              ...section,
+              rows: [
+                ...section.rows,
+                {
+                  localId: makeLocalId(),
+                  persisted: false,
+                  sourceId: '',
+                  exercise_name: '',
+                  sets: '',
+                  reps_or_time: '',
+                  equipment: '',
+                  intensity: '',
+                  weight: '',
+                  rest: '',
+                  video_url: '',
+                  notes: '',
+                },
+              ],
+            },
+      ),
+    )
+  }
+
+  function removeExercise(sectionIndex: number, rowLocalId: string) {
+    setEditableSections((current) =>
+      current.map((section, currentSectionIndex) =>
+        currentSectionIndex !== sectionIndex
+          ? section
+          : {
+              ...section,
+              rows: section.rows.filter((row) => row.localId !== rowLocalId),
+            },
+      ),
+    )
+  }
+
+  function cancelContentEditing() {
+    resetAssignmentContentForm()
+    setIsEditingContent(false)
+    setError(null)
+  }
 
   async function handleSave() {
     setIsSaving(true)
@@ -148,6 +275,44 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
     }
   }
 
+  async function handleSaveContent() {
+    setIsSavingContent(true)
+    setError(null)
+
+    try {
+      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(
+        `/api/coach/athletes/${athleteId}/assignments/${assignment.record_id}/content`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            sections: editableSections.map((section) => ({
+              name: section.name,
+              rows: section.rows.map((row) => ({
+                id: row.persisted && row.sourceId ? Number(row.sourceId) : null,
+                persisted: row.persisted,
+                exercise_name: row.exercise_name,
+                sets: row.sets,
+                reps_or_time: row.reps_or_time,
+                equipment: row.equipment,
+                intensity: row.intensity,
+                weight: row.weight,
+                rest: row.rest,
+                video_url: row.video_url,
+                notes: row.notes,
+              })),
+            })),
+          }),
+        },
+      )
+      onUpdated(payload.schedule, payload.message)
+      setIsEditingContent(false)
+    } catch (requestError) {
+      setError(apiErrorMessage(requestError, '更新這次安排的課表內容失敗。'))
+    } finally {
+      setIsSavingContent(false)
+    }
+  }
+
   return (
     <article className="lab-card p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -158,7 +323,24 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
         </div>
         <div className="flex flex-wrap gap-2">
           <span className="lab-badge-primary">課表安排</span>
-          <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setIsEditing((value) => !value)}>
+          <button
+            type="button"
+            className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
+            onClick={() => {
+              if (!isEditingContent) resetAssignmentContentForm()
+              setIsEditingContent((value) => !value)
+            }}
+          >
+            {isEditingContent ? '收起課表內容編輯' : '編輯課表內容'}
+          </button>
+          <button
+            type="button"
+            className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
+            onClick={() => {
+              if (!isEditing) resetAssignmentForm()
+              setIsEditing((value) => !value)
+            }}
+          >
             {isEditing ? '收起編輯' : '編輯安排'}
           </button>
           <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setConfirmDelete((value) => !value)}>
@@ -182,7 +364,94 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
         </div>
       ) : null}
 
-      {assignment.sections.length > 0 ? (
+      {isEditingContent ? (
+        <div className="mt-6 space-y-6">
+          {editableSections.map((section, sectionIndex) => (
+            <section key={`${assignment.id}-edit-${section.name}-${sectionIndex}`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h4 className="text-lg font-bold text-slate-900">{section.name}</h4>
+                <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => addExercise(sectionIndex)}>
+                  新增動作
+                </button>
+              </div>
+
+              {section.rows.length === 0 ? (
+                <div className="mt-3 rounded-[1rem] border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                  這個區段目前沒有動作，請點「新增動作」加入。
+                </div>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {section.rows.map((row) => (
+                    <article key={row.localId} className="rounded-[1rem] border border-slate-200 bg-white p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h5 className="text-base font-bold text-slate-900">{row.exercise_name || '未命名動作'}</h5>
+                          <p className="mt-1 text-sm text-slate-500">這裡只會修改這一次 assignment 的個人化課表內容。</p>
+                        </div>
+                        <button
+                          type="button"
+                          className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm text-rose-700"
+                          onClick={() => removeExercise(sectionIndex, row.localId)}
+                        >
+                          刪除動作
+                        </button>
+                      </div>
+
+                      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                        <div className="space-y-2 xl:col-span-2">
+                          <label className="text-sm font-semibold text-slate-700">動作名稱</label>
+                          <input className="lab-input" value={row.exercise_name} onChange={(event) => updateExercise(sectionIndex, row.localId, 'exercise_name', event.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">組數</label>
+                          <input className="lab-input" value={row.sets} onChange={(event) => updateExercise(sectionIndex, row.localId, 'sets', event.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">次數 / 時間</label>
+                          <input className="lab-input" value={row.reps_or_time} onChange={(event) => updateExercise(sectionIndex, row.localId, 'reps_or_time', event.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">工具</label>
+                          <input className="lab-input" value={row.equipment} onChange={(event) => updateExercise(sectionIndex, row.localId, 'equipment', event.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">強度</label>
+                          <input className="lab-input" value={row.intensity} onChange={(event) => updateExercise(sectionIndex, row.localId, 'intensity', event.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">重量</label>
+                          <input className="lab-input" value={row.weight} onChange={(event) => updateExercise(sectionIndex, row.localId, 'weight', event.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">休息時間</label>
+                          <input className="lab-input" value={row.rest} onChange={(event) => updateExercise(sectionIndex, row.localId, 'rest', event.target.value)} />
+                        </div>
+                        <div className="space-y-2 xl:col-span-2">
+                          <label className="text-sm font-semibold text-slate-700">影片</label>
+                          <input className="lab-input" value={row.video_url} onChange={(event) => updateExercise(sectionIndex, row.localId, 'video_url', event.target.value)} />
+                        </div>
+                        <div className="space-y-2 xl:col-span-2">
+                          <label className="text-sm font-semibold text-slate-700">備註</label>
+                          <textarea className="lab-input min-h-24" value={row.notes} onChange={(event) => updateExercise(sectionIndex, row.localId, 'notes', event.target.value)} />
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          ))}
+
+          <div className="flex flex-wrap gap-3">
+            <button type="button" className="lab-btn-primary" disabled={isSavingContent} onClick={() => void handleSaveContent()}>
+              {isSavingContent ? '儲存中...' : '儲存課表內容'}
+            </button>
+            <button type="button" className="lab-btn-secondary" disabled={isSavingContent} onClick={cancelContentEditing}>
+              取消編輯
+            </button>
+          </div>
+        </div>
+      ) : assignment.sections.length > 0 ? (
         <div className="mt-6 space-y-6">
           {assignment.sections.map((section) => (
             <section key={`${assignment.id}-${section.name}`}>

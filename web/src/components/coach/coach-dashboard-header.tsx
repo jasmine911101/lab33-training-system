@@ -9,6 +9,7 @@ type CoachDashboardHeaderProps = {
   athleteCount: number
   userEmail?: string | null
   coachName?: string | null
+  createAthleteSlot?: React.ReactNode
 }
 
 function SummaryStat({ label, value }: { label: string; value: string | number }) {
@@ -20,7 +21,7 @@ function SummaryStat({ label, value }: { label: string; value: string | number }
   )
 }
 
-export function CoachDashboardHeader({ roleLabel, athleteCount, userEmail, coachName }: CoachDashboardHeaderProps) {
+export function CoachDashboardHeader({ roleLabel, athleteCount, userEmail, coachName, createAthleteSlot }: CoachDashboardHeaderProps) {
   const [isPasswordOpen, setIsPasswordOpen] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
 
@@ -61,6 +62,12 @@ export function CoachDashboardHeader({ roleLabel, athleteCount, userEmail, coach
             <span className={roleLabel === '總教練' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
             <span className="lab-badge bg-slate-100 text-slate-600">{userEmail ?? '未登入'}</span>
           </div>
+
+          {createAthleteSlot ? (
+            <div className="flex justify-end">
+              {createAthleteSlot}
+            </div>
+          ) : null}
         </div>
       </section>
 

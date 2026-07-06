@@ -28,6 +28,31 @@ type BlockExerciseTemplateRow = {
   order_num: number
 }
 
+type AssignmentExerciseInputRow = {
+  id?: number | null
+  exercise_name: string
+  sets: string
+  reps_or_time: string
+  equipment: string
+  intensity: string
+  weight: string
+  rest: string
+  video_url: string
+  notes: string
+  persisted?: boolean
+}
+
+type AssignmentExerciseInputSection = {
+  name: string
+  rows: AssignmentExerciseInputRow[]
+}
+
+type AthleteBlockExerciseExistingRow = {
+  id: number
+  actual_sets: string | null
+  actual_weight: string | null
+}
+
 function text(value: unknown) {
   if (value === null || value === undefined) return ''
   const normalized = String(value).trim()
@@ -142,6 +167,80 @@ async function createAssignmentExerciseSnapshot(athleteBlockId: number, blockId:
       ...row,
     })
     if (insertError) throw insertError
+  }
+}
+
+async function fetchExistingAssignmentExerciseRows(athleteBlockId: number) {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('athlete_block_exercises')
+    .select('id, actual_sets, actual_weight')
+    .eq('athlete_block_id', athleteBlockId)
+
+  if (error) throw error
+  return (data ?? []) as AthleteBlockExerciseExistingRow[]
+}
+
+async function upsertAssignmentExerciseSnapshot(athleteBlockId: number, sections: AssignmentExerciseInputSection[]) {
+  const { admin, error } = await ensureAdmin()
+  if (!admin) {
+    throw new Error(error ?? '缺少 service role。')
+  }
+
+  const existingRows = await fetchExistingAssignmentExerciseRows(athleteBlockId)
+  const existingIds = new Set(existingRows.map((row) => Number(row.id)))
+  const retainedIds = new Set<number>()
+
+  for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex += 1) {
+    const section = sections[sectionIndex]
+    const sectionName = text(section.name) || '未命名區段'
+    let orderNum = 0
+
+    for (const inputRow of section.rows) {
+      const exerciseName = text(inputRow.exercise_name)
+      if (!exerciseName) continue
+
+      orderNum += 1
+      const payload = {
+        athlete_block_id: athleteBlockId,
+        section_name: sectionName,
+        section_order: sectionIndex + 1,
+        exercise_name: exerciseName,
+        sets: text(inputRow.sets),
+        reps_or_time: text(inputRow.reps_or_time),
+        equipment: text(inputRow.equipment),
+        intensity: text(inputRow.intensity),
+        weight: text(inputRow.weight),
+        rest: text(inputRow.rest),
+        video_url: text(inputRow.video_url),
+        notes: text(inputRow.notes),
+        order_num: orderNum,
+      }
+
+      const rowId = Number(inputRow.id ?? 0)
+      if (inputRow.persisted && existingIds.has(rowId)) {
+        const { error: updateError } = await admin.from('athlete_block_exercises').update(payload).eq('id', rowId)
+        if (updateError) throw updateError
+        retainedIds.add(rowId)
+      } else {
+        const { data: inserted, error: insertError } = await admin
+          .from('athlete_block_exercises')
+          .insert(payload)
+          .select('id')
+          .single()
+        if (insertError) throw insertError
+        retainedIds.add(Number(inserted.id))
+      }
+    }
+  }
+
+  const idsToDelete = existingRows
+    .map((row) => Number(row.id))
+    .filter((rowId) => !retainedIds.has(rowId))
+
+  if (idsToDelete.length > 0) {
+    const { error: deleteError } = await admin.from('athlete_block_exercises').delete().in('id', idsToDelete)
+    if (deleteError) throw deleteError
   }
 }
 
@@ -281,6 +380,34 @@ export async function deleteAssignmentForAthlete(coach: CoachProfile, athleteId:
 
   return {
     message: '已刪除這筆課表安排。',
+    schedule: await refreshSchedule(athleteId),
+  }
+}
+
+export async function updateAssignmentContentForAthlete(
+  coach: CoachProfile,
+  athleteId: number,
+  assignmentId: number,
+  payload: {
+    sections: AssignmentExerciseInputSection[]
+  },
+): Promise<MutationResult> {
+  const athlete = await ensureCoachCanManageAthlete(coach, athleteId)
+  if (!athlete) return { error: '找不到可管理的學員。' }
+
+  const assignment = await ensureAssignmentBelongsToAthlete(athleteId, assignmentId)
+  if (!assignment) return { error: '找不到這筆課表安排。' }
+
+  const sections = Array.isArray(payload.sections) ? payload.sections : []
+
+  try {
+    await upsertAssignmentExerciseSnapshot(assignmentId, sections)
+  } catch (saveError) {
+    return { error: saveError instanceof Error ? saveError.message : '儲存學員課表內容失敗。' }
+  }
+
+  return {
+    message: '已更新這次安排的課表內容。',
     schedule: await refreshSchedule(athleteId),
   }
 }

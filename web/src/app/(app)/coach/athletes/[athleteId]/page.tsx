@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
+import { CoachAthleteDetailAdmin } from '@/components/coach/coach-athlete-detail-admin'
 import { CoachScheduleManager } from '@/components/coach/coach-schedule-manager'
 import { requireCoachAccess } from '@/lib/auth/roles'
 import { getCoachSchedulingPageData } from '@/services/coach-schedule-management'
+import { getAccessibleManagedAthleteForCoach, getCoachManagementSnapshot } from '@/services/coach-management'
 
 export default async function CoachAthleteDetailPage({ params }: { params: Promise<{ athleteId: string }> }) {
   const { athleteId } = await params
@@ -15,8 +17,12 @@ export default async function CoachAthleteDetailPage({ params }: { params: Promi
     notFound()
   }
 
-  const pageData = await getCoachSchedulingPageData(coachProfile, parsedAthleteId)
-  if (!pageData) {
+  const [pageData, managedAthlete, managementSnapshot] = await Promise.all([
+    getCoachSchedulingPageData(coachProfile, parsedAthleteId),
+    getAccessibleManagedAthleteForCoach(coachProfile, parsedAthleteId),
+    getCoachManagementSnapshot(coachProfile),
+  ])
+  if (!pageData || !managedAthlete) {
     notFound()
   }
 
@@ -35,12 +41,11 @@ export default async function CoachAthleteDetailPage({ params }: { params: Promi
         </Link>
       </div>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <article className="lab-stat-card"><p className="lab-eyebrow">Email</p><p className="mt-3 text-sm font-semibold text-slate-900">{athlete.email ?? '-'}</p></article>
-        <article className="lab-stat-card"><p className="lab-eyebrow">Sport</p><p className="mt-3 text-sm font-semibold text-slate-900">{athlete.sport ?? '-'}</p></article>
-        <article className="lab-stat-card"><p className="lab-eyebrow">Level</p><p className="mt-3 text-sm font-semibold text-slate-900">{athlete.level ?? '-'}</p></article>
-        <article className="lab-stat-card"><p className="lab-eyebrow">Status</p><p className="mt-3 text-sm font-semibold text-slate-900">{athlete.must_change_password ? '需更新密碼' : '正常'}</p></article>
-      </section>
+      <CoachAthleteDetailAdmin
+        initialAthlete={managedAthlete}
+        assignableCoaches={managementSnapshot.assignableCoaches}
+        isHeadCoach={coachProfile.is_head_coach === true}
+      />
 
       <CoachScheduleManager athleteId={athlete.id} initialSchedule={schedule} blocks={blocks} />
     </div>
