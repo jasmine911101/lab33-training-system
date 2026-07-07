@@ -36,6 +36,7 @@ function AssignmentEditor({
   const [selectedCoachIds, setSelectedCoachIds] = useState<number[]>(athlete.assignedCoachIds)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isOpen, setIsOpen] = useState(false)
 
   async function handleSave() {
     setIsSaving(true)
@@ -62,27 +63,40 @@ function AssignmentEditor({
 
   return (
     <div className="space-y-3 rounded-[1.25rem] border border-slate-200 bg-white p-5">
-      <p className="text-sm font-semibold text-slate-900">指派教練</p>
-      {assignableCoaches.length === 0 ? (
-        <p className="text-sm text-slate-500">目前沒有可指派的一般教練。</p>
-      ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {assignableCoaches.map((coach) => (
-            <label key={coach.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={selectedCoachIds.includes(coach.id)}
-                onChange={() => toggleCoach(coach.id)}
-              />
-              <span>{coachDisplayName(coach)}</span>
-            </label>
-          ))}
-        </div>
-      )}
-      {error ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
-      <button type="button" className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" disabled={isSaving} onClick={handleSave}>
-        {isSaving ? '儲存中...' : '儲存指派'}
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-4 text-left"
+        onClick={() => setIsOpen((current) => !current)}
+        aria-expanded={isOpen}
+      >
+        <p className="text-sm font-semibold text-slate-900">指派教練</p>
+        <span className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm">{isOpen ? '收起' : '展開'}</span>
       </button>
+
+      {isOpen ? (
+        <>
+          {assignableCoaches.length === 0 ? (
+            <p className="text-sm text-slate-500">目前沒有可指派的一般教練。</p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {assignableCoaches.map((coach) => (
+                <label key={coach.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={selectedCoachIds.includes(coach.id)}
+                    onChange={() => toggleCoach(coach.id)}
+                  />
+                  <span>{coachDisplayName(coach)}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {error ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+          <button type="button" className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" disabled={isSaving} onClick={handleSave}>
+            {isSaving ? '儲存中...' : '儲存指派'}
+          </button>
+        </>
+      ) : null}
     </div>
   )
 }
@@ -201,6 +215,7 @@ export function CoachAthleteDetailAdmin({
 
       {isHeadCoach ? (
         <AssignmentEditor
+          key={`${athlete.id}-${athlete.assignedCoachIds.join(',')}`}
           athlete={athlete}
           assignableCoaches={assignableCoaches}
           onSaved={(updatedAthlete, message) => {

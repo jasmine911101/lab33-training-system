@@ -43,6 +43,7 @@ export type BlockTemplatePayload = {
   goal: string
   trainingElement: string
   description: string
+  trainingCategoryId?: number | null
   sections: BlockSectionTemplateInput[]
 }
 
@@ -92,7 +93,37 @@ export type BlockTemplateRecord = {
   goal: string | null
   training_element: string | null
   description: string | null
+  training_category_id: number | null
   sectionCount: number
   exerciseCount: number
   sections: BlockSectionDetail[]
+}
+
+export type BlockTaxonomySportRecord = {
+  id: number
+  name: string
+  sort_order: number | null
+  is_active: boolean | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type BlockTaxonomyAgeGroupRecord = {
+  id: number
+  sport_id: number
+  name: string
+  sort_order: number | null
+  is_active: boolean | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type BlockTaxonomyTrainingCategoryRecord = {
+  id: number
+  age_group_id: number
+  name: string
+  sort_order: number | null
+  is_active: boolean | null
+  created_at: string | null
+  updated_at: string | null
 }

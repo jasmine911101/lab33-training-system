@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { CoachDashboardHeader } from '@/components/coach/coach-dashboard-header'
 import {
@@ -25,6 +26,11 @@ type ApiSuccess<T> = T & {
 }
 
 type FilterValue = 'all' | 'unassigned' | `coach:${number}`
+
+type AssignmentDialogState = {
+  athlete: ManagedAthleteRecord
+  selectedCoachIds: number[]
+}
 
 function buildFilterOptions(assignableCoaches: CoachDirectoryEntry[]) {
   const sorted = [...assignableCoaches].sort((left, right) => coachDisplayName(left).localeCompare(coachDisplayName(right), 'zh-Hant'))
@@ -162,6 +168,206 @@ function CreateAthleteSection({
   )
 }
 
+function AssignmentDialog({
+  state,
+  assignableCoaches,
+  isSaving,
+  error,
+  onClose,
+  onToggleCoach,
+  onSave,
+}: {
+  state: AssignmentDialogState
+  assignableCoaches: CoachDirectoryEntry[]
+  isSaving: boolean
+  error: string | null
+  onClose: () => void
+  onToggleCoach: (coachId: number) => void
+  onSave: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">
+      <div className="w-full max-w-2xl rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.18)] sm:p-7">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="lab-eyebrow">Coach Assignment</p>
+            <h3 className="mt-3 text-2xl font-bold text-slate-900">指派教練</h3>
+            <p className="mt-3 text-sm leading-7 text-slate-600">
+              目前正在調整 <span className="font-semibold text-slate-900">{state.athlete.name ?? state.athlete.email ?? '這位學員'}</span> 的教練指派。
+            </p>
+          </div>
+          <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={onClose}>
+            關閉
+          </button>
+        </div>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {assignableCoaches.length === 0 ? (
+            <p className="text-sm text-slate-500">目前沒有可指派的一般教練。</p>
+          ) : (
+            assignableCoaches.map((coach) => (
+              <label key={coach.id} className="flex items-center gap-3 rounded-[1rem] border border-slate-200 px-4 py-3 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={state.selectedCoachIds.includes(coach.id)}
+                  onChange={() => onToggleCoach(coach.id)}
+                />
+                <span>{coachDisplayName(coach)}</span>
+              </label>
+            ))
+          )}
+        </div>
+
+        {error ? <p className="mt-5 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button type="button" className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" disabled={isSaving} onClick={onSave}>
+            {isSaving ? '儲存中...' : '儲存指派'}
+          </button>
+          <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" disabled={isSaving} onClick={onClose}>
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ActionDropdown({
+  isHeadCoach,
+  open,
+  openUpward,
+  loading,
+  onToggle,
+  onClose,
+  onAssign,
+  onReset,
+  onDelete,
+}: {
+  isHeadCoach: boolean
+  open: boolean
+  openUpward: boolean
+  loading: boolean
+  onToggle: () => void
+  onClose: () => void
+  onAssign: () => void
+  onReset: () => void
+  onDelete: () => void
+}) {
+  const buttonRef = useRef<HTMLDivElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const [menuStyle, setMenuStyle] = useState<{ top: number; left: number; width: number } | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+
+    function updateMenuPosition() {
+      const trigger = buttonRef.current
+      if (!trigger) return
+
+      const rect = trigger.getBoundingClientRect()
+      const isHiddenTrigger = trigger.offsetParent === null || rect.width === 0 || rect.height === 0
+      if (isHiddenTrigger) {
+        setMenuStyle(null)
+        return
+      }
+
+      const viewportWidth = window.innerWidth
+      const viewportHeight = window.innerHeight
+      const itemCount = isHeadCoach ? 3 : 2
+      const gap = 8
+      const width = 216
+      const estimatedHeight = itemCount * 48 + 16
+
+      const left = Math.max(gap, Math.min(rect.right - width, viewportWidth - width - gap))
+      const shouldOpenUpward = openUpward || rect.bottom + gap + estimatedHeight > viewportHeight - gap
+      const top = shouldOpenUpward
+        ? Math.max(gap, rect.top - estimatedHeight - gap)
+        : Math.min(viewportHeight - estimatedHeight - gap, rect.bottom + gap)
+
+      setMenuStyle({ top, left, width })
+    }
+
+    function handlePointerDown(event: MouseEvent | PointerEvent) {
+      const target = event.target as Node
+      if (buttonRef.current?.contains(target)) return
+      if (menuRef.current?.contains(target)) return
+      onClose()
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    updateMenuPosition()
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('resize', updateMenuPosition)
+    window.addEventListener('scroll', updateMenuPosition, true)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('resize', updateMenuPosition)
+      window.removeEventListener('scroll', updateMenuPosition, true)
+    }
+  }, [isHeadCoach, open, onClose, openUpward])
+
+  return (
+    <div ref={buttonRef} className="relative inline-flex">
+      <button
+        type="button"
+        className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+        onClick={onToggle}
+      >
+        操作
+      </button>
+
+      {open && menuStyle
+        ? createPortal(
+            <div
+              ref={menuRef}
+              className="fixed z-[80] rounded-[1rem] border border-slate-200 bg-white p-2 text-left shadow-[0_16px_32px_rgba(15,23,42,0.14)]"
+              style={{ top: menuStyle.top, left: menuStyle.left, width: menuStyle.width, minWidth: menuStyle.width }}
+            >
+              {isHeadCoach ? (
+                <button
+                  type="button"
+                  className="flex h-11 w-full items-center justify-between gap-3 whitespace-nowrap rounded-[0.85rem] px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  onClick={onAssign}
+                >
+                  <span className="block flex-1 whitespace-nowrap text-left [word-break:keep-all] [overflow-wrap:normal]">指派教練</span>
+                  <span className="shrink-0 text-slate-400">›</span>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="flex h-11 w-full items-center justify-between gap-3 whitespace-nowrap rounded-[0.85rem] px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                onClick={onReset}
+                disabled={loading}
+              >
+                <span className="block flex-1 whitespace-nowrap text-left [word-break:keep-all] [overflow-wrap:normal]">重設密碼</span>
+                <span className="shrink-0 text-slate-400">›</span>
+              </button>
+              <button
+                type="button"
+                className="flex h-11 w-full items-center justify-between gap-3 whitespace-nowrap rounded-[0.85rem] px-3 py-2 text-left text-sm font-medium text-rose-700 transition hover:bg-rose-50"
+                onClick={onDelete}
+                disabled={loading}
+              >
+                <span className="block flex-1 whitespace-nowrap text-left [word-break:keep-all] [overflow-wrap:normal]">刪除學員</span>
+                <span className="shrink-0 text-rose-300">›</span>
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  )
+}
+
 function ManagedAthletesSection({
   athletes,
   isHeadCoach,
@@ -173,6 +379,7 @@ function ManagedAthletesSection({
   openActionId,
   setOpenActionId,
   actionLoadingId,
+  handleAssignCoach,
   handleResetPassword,
   handleDeleteAthlete,
 }: {
@@ -186,6 +393,7 @@ function ManagedAthletesSection({
   openActionId: number | null
   setOpenActionId: React.Dispatch<React.SetStateAction<number | null>>
   actionLoadingId: number | null
+  handleAssignCoach: (athlete: ManagedAthleteRecord) => void
   handleResetPassword: (athlete: ManagedAthleteRecord) => Promise<void>
   handleDeleteAthlete: (athlete: ManagedAthleteRecord) => Promise<void>
 }) {
@@ -265,46 +473,26 @@ function ManagedAthletesSection({
                       <p className="mt-1 text-sm font-medium text-slate-700">{athlete.sport ?? '-'}</p>
                     </div>
                     <div className="relative shrink-0">
-                      <button
-                        type="button"
-                        className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                        onClick={() => setOpenActionId((current) => (current === athlete.id ? null : athlete.id))}
-                      >
-                        操作
-                      </button>
-
-                      {openActionId === athlete.id ? (
-                        <div
-                          className={`absolute right-0 z-20 min-w-[12.5rem] rounded-[1rem] border border-slate-200 bg-white p-2 shadow-[0_16px_32px_rgba(15,23,42,0.14)] ${
-                            openUpward ? 'bottom-full mb-2' : 'top-full mt-2'
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            className="flex w-full min-w-0 items-center justify-between gap-3 whitespace-nowrap rounded-[0.85rem] px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                            onClick={() => {
-                              setOpenActionId(null)
-                              void handleResetPassword(athlete)
-                            }}
-                            disabled={actionLoadingId === athlete.id}
-                          >
-                            <span>重設密碼</span>
-                            <span className="text-slate-400">›</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="flex w-full min-w-0 items-center justify-between gap-3 whitespace-nowrap rounded-[0.85rem] px-3 py-2 text-left text-sm font-medium text-rose-700 transition hover:bg-rose-50"
-                            onClick={() => {
-                              setOpenActionId(null)
-                              void handleDeleteAthlete(athlete)
-                            }}
-                            disabled={actionLoadingId === athlete.id}
-                          >
-                            <span>刪除學員</span>
-                            <span className="text-rose-300">›</span>
-                          </button>
-                        </div>
-                      ) : null}
+                      <ActionDropdown
+                        isHeadCoach={isHeadCoach}
+                        open={openActionId === athlete.id}
+                        openUpward={openUpward}
+                        loading={actionLoadingId === athlete.id}
+                        onToggle={() => setOpenActionId((current) => (current === athlete.id ? null : athlete.id))}
+                        onClose={() => setOpenActionId(null)}
+                        onAssign={() => {
+                          setOpenActionId(null)
+                          handleAssignCoach(athlete)
+                              }}
+                        onReset={() => {
+                          setOpenActionId(null)
+                          void handleResetPassword(athlete)
+                        }}
+                        onDelete={() => {
+                          setOpenActionId(null)
+                          void handleDeleteAthlete(athlete)
+                        }}
+                      />
                     </div>
                   </div>
 
@@ -322,101 +510,81 @@ function ManagedAthletesSection({
           </div>
 
           <div className="relative hidden md:block">
-            <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white">
-              <table className="w-full table-fixed border-collapse">
-                <colgroup>
-                  <col className="w-[26%]" />
-                  <col className="w-[32%]" />
-                  <col className="w-[18%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[10%]" />
-                </colgroup>
-                <thead className="bg-slate-50">
-                  <tr className="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-[0.28em] text-slate-500">
-                    <th className="px-6 py-4">學員姓名</th>
-                    <th className="px-6 py-4">Email</th>
-                    <th className="px-6 py-4">運動項目</th>
-                    <th className="px-6 py-4">狀態</th>
-                    <th className="px-6 py-4 text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {filteredAthletes.map((athlete, index) => {
-                    const openUpward = index >= filteredAthletes.length - 2
+            <div className="rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+              <div className="overflow-x-auto">
+                <table className="w-full table-fixed border-collapse">
+                  <colgroup>
+                    <col className="w-[26%]" />
+                    <col className="w-[32%]" />
+                    <col className="w-[18%]" />
+                    <col className="w-[14%]" />
+                    <col className="w-[10%]" />
+                  </colgroup>
+                  <thead className="bg-slate-50">
+                    <tr className="text-left text-xs font-bold uppercase tracking-[0.28em] text-slate-500">
+                      <th className="border-b border-slate-200 px-6 py-4">學員姓名</th>
+                      <th className="border-b border-slate-200 px-6 py-4">Email</th>
+                      <th className="border-b border-slate-200 px-6 py-4">運動項目</th>
+                      <th className="border-b border-slate-200 px-6 py-4">狀態</th>
+                      <th className="border-b border-slate-200 px-6 py-4 text-right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAthletes.map((athlete, index) => {
+                      const openUpward = index >= filteredAthletes.length - 2
 
-                    return (
-                      <tr key={athlete.id} className="align-middle">
-                        <td className="px-6 py-4">
-                          <Link
-                            href={`/coach/athletes/${athlete.id}`}
-                            className="inline-flex max-w-full items-center gap-2 rounded-full border border-transparent bg-slate-50 px-4 py-2 text-sm font-bold text-slate-900 transition hover:border-[var(--lab-accent-soft)] hover:bg-[var(--lab-accent-ghost)] hover:text-[var(--lab-accent)] active:scale-[0.99]"
-                          >
-                            <span className="truncate">{athlete.name ?? '未命名學員'}</span>
-                            <span className="text-sm text-slate-400">›</span>
-                          </Link>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-600">
-                          <div className="truncate">{athlete.email ?? '-'}</div>
-                        </td>
-                        <td className="px-6 py-4 text-sm font-medium text-slate-700">
-                          <div className="truncate">{athlete.sport ?? '-'}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          {athlete.must_change_password ? (
-                            <span className="lab-badge-warning">需要更新密碼</span>
-                          ) : (
-                            <span className="lab-badge-success">正常</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="relative inline-flex">
-                            <button
-                              type="button"
-                              className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                              onClick={() => setOpenActionId((current) => (current === athlete.id ? null : athlete.id))}
+                      return (
+                        <tr key={athlete.id} className="align-middle transition hover:bg-slate-50/60">
+                          <td className="border-b border-slate-100 px-6 py-4 last:border-b-0">
+                            <Link
+                              href={`/coach/athletes/${athlete.id}`}
+                              className="inline-flex max-w-full items-center gap-2 rounded-full border border-transparent bg-slate-50 px-4 py-2 text-sm font-bold text-slate-900 transition hover:border-[var(--lab-accent-soft)] hover:bg-[var(--lab-accent-ghost)] hover:text-[var(--lab-accent)] active:scale-[0.99]"
                             >
-                              操作
-                            </button>
-
-                            {openActionId === athlete.id ? (
-                              <div
-                                className={`absolute right-0 z-20 min-w-[12.5rem] rounded-[1rem] border border-slate-200 bg-white p-2 text-left shadow-[0_16px_32px_rgba(15,23,42,0.14)] ${
-                                  openUpward ? 'bottom-full mb-2' : 'top-full mt-2'
-                                }`}
-                              >
-                                <button
-                                  type="button"
-                                  className="flex w-full min-w-0 items-center justify-between gap-3 whitespace-nowrap rounded-[0.85rem] px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                  onClick={() => {
-                                    setOpenActionId(null)
-                                    void handleResetPassword(athlete)
-                                  }}
-                                  disabled={actionLoadingId === athlete.id}
-                                >
-                                  <span>重設密碼</span>
-                                  <span className="text-slate-400">›</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="flex w-full min-w-0 items-center justify-between gap-3 whitespace-nowrap rounded-[0.85rem] px-3 py-2 text-left text-sm font-medium text-rose-700 transition hover:bg-rose-50"
-                                  onClick={() => {
-                                    setOpenActionId(null)
-                                    void handleDeleteAthlete(athlete)
-                                  }}
-                                  disabled={actionLoadingId === athlete.id}
-                                >
-                                  <span>刪除學員</span>
-                                  <span className="text-rose-300">›</span>
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                              <span className="truncate">{athlete.name ?? '未命名學員'}</span>
+                              <span className="text-sm text-slate-400">›</span>
+                            </Link>
+                          </td>
+                          <td className="border-b border-slate-100 px-6 py-4 text-sm text-slate-600 last:border-b-0">
+                            <div className="truncate">{athlete.email ?? '-'}</div>
+                          </td>
+                          <td className="border-b border-slate-100 px-6 py-4 text-sm font-medium text-slate-700 last:border-b-0">
+                            <div className="truncate">{athlete.sport ?? '-'}</div>
+                          </td>
+                          <td className="border-b border-slate-100 px-6 py-4 last:border-b-0">
+                            {athlete.must_change_password ? (
+                              <span className="lab-badge-warning">需要更新密碼</span>
+                            ) : (
+                              <span className="lab-badge-success">正常</span>
+                            )}
+                          </td>
+                          <td className="border-b border-slate-100 px-6 py-4 text-right last:border-b-0">
+                            <ActionDropdown
+                              isHeadCoach={isHeadCoach}
+                              open={openActionId === athlete.id}
+                              openUpward={openUpward}
+                              loading={actionLoadingId === athlete.id}
+                              onToggle={() => setOpenActionId((current) => (current === athlete.id ? null : athlete.id))}
+                              onClose={() => setOpenActionId(null)}
+                              onAssign={() => {
+                                setOpenActionId(null)
+                                handleAssignCoach(athlete)
+                              }}
+                              onReset={() => {
+                                setOpenActionId(null)
+                                void handleResetPassword(athlete)
+                              }}
+                              onDelete={() => {
+                                setOpenActionId(null)
+                                void handleDeleteAthlete(athlete)
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -440,6 +608,9 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
   const [createdTempPassword, setCreatedTempPassword] = useState<{ email: string; password: string } | null>(null)
   const [openActionId, setOpenActionId] = useState<number | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
+  const [assignmentDialog, setAssignmentDialog] = useState<AssignmentDialogState | null>(null)
+  const [assignmentSaving, setAssignmentSaving] = useState(false)
+  const [assignmentError, setAssignmentError] = useState<string | null>(null)
 
   const filterOptions = useMemo(() => buildFilterOptions(assignableCoaches), [assignableCoaches])
 
@@ -491,6 +662,47 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
     setSelectedCreateCoachIds((current) =>
       current.includes(coachId) ? current.filter((value) => value !== coachId) : [...current, coachId],
     )
+  }
+
+  function openAssignCoachDialog(athlete: ManagedAthleteRecord) {
+    setAssignmentError(null)
+    setAssignmentDialog({
+      athlete,
+      selectedCoachIds: athlete.assignedCoachIds,
+    })
+  }
+
+  function toggleAssignmentCoach(coachId: number) {
+    setAssignmentDialog((current) => {
+      if (!current) return current
+      return {
+        ...current,
+        selectedCoachIds: current.selectedCoachIds.includes(coachId)
+          ? current.selectedCoachIds.filter((value) => value !== coachId)
+          : [...current.selectedCoachIds, coachId],
+      }
+    })
+  }
+
+  async function handleSaveAssignment() {
+    if (!assignmentDialog) return
+
+    setAssignmentSaving(true)
+    setAssignmentError(null)
+
+    try {
+      const payload = await requestJson<{ athlete: ManagedAthleteRecord }>(`/api/coach/athletes/${assignmentDialog.athlete.id}/assignment`, {
+        method: 'PUT',
+        body: JSON.stringify({ coachIds: assignmentDialog.selectedCoachIds }),
+      })
+
+      setAthletes((current) => current.map((athlete) => (athlete.id === payload.athlete.id ? payload.athlete : athlete)))
+      setAssignmentDialog(null)
+    } catch (requestError) {
+      setAssignmentError(requestError instanceof Error ? requestError.message : '更新教練指派失敗。')
+    } finally {
+      setAssignmentSaving(false)
+    }
   }
 
   async function handleResetPassword(athlete: ManagedAthleteRecord) {
@@ -564,9 +776,25 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
         openActionId={openActionId}
         setOpenActionId={setOpenActionId}
         actionLoadingId={actionLoadingId}
+        handleAssignCoach={openAssignCoachDialog}
         handleResetPassword={handleResetPassword}
         handleDeleteAthlete={handleDeleteAthlete}
       />
+
+      {assignmentDialog && isHeadCoach ? (
+        <AssignmentDialog
+          state={assignmentDialog}
+          assignableCoaches={assignableCoaches}
+          isSaving={assignmentSaving}
+          error={assignmentError}
+          onClose={() => {
+            if (assignmentSaving) return
+            setAssignmentDialog(null)
+          }}
+          onToggleCoach={toggleAssignmentCoach}
+          onSave={() => void handleSaveAssignment()}
+        />
+      ) : null}
     </div>
   )
 }

@@ -20,6 +20,7 @@ type BlockRow = {
   goal: string | null
   training_element: string | null
   description: string | null
+  training_category_id: number | null
 }
 
 type BlockSectionRow = {
@@ -37,6 +38,11 @@ type AdminMutationResult<T> = {
   message?: string
 }
 
+type SupabaseLikeError = {
+  code?: string
+  message?: string
+}
+
 function cleanText(value: string | null | undefined) {
   return String(value ?? '').trim()
 }
@@ -47,6 +53,11 @@ function normalizeUniqueValue(value: string | null | undefined) {
 
 function hasExerciseContent(row: BlockExerciseTemplateInput) {
   return cleanText(row.exercise_name).length > 0
+}
+
+function isMissingTrainingCategoryColumnError(error: unknown) {
+  const maybeError = error as SupabaseLikeError | null | undefined
+  return maybeError?.code === '42703' && String(maybeError?.message ?? '').includes('training_category_id')
 }
 
 async function ensureAdminClient() {
@@ -61,15 +72,57 @@ async function ensureAdminClient() {
   return { admin, error: null }
 }
 
-async function fetchBlockRows() {
+async function fetchBlockRowsByCategory(
+  options?: {
+    trainingCategoryId?: number
+    uncategorizedOnly?: boolean
+  },
+) {
+  if (options?.uncategorizedOnly || typeof options?.trainingCategoryId === 'number') {
+    const supabase = await createClient()
+    let query = supabase
+      .from('blocks')
+      .select('id, block_code, block_name, goal, training_element, description, training_category_id')
+      .order('id', { ascending: true })
+
+    if (options.uncategorizedOnly) {
+      query = query.is('training_category_id', null)
+    } else if (typeof options.trainingCategoryId === 'number') {
+      query = query.eq('training_category_id', options.trainingCategoryId)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return (data ?? []) as BlockRow[]
+  }
+
   const supabase = await createClient()
-  const { data, error } = await supabase
+  const query = supabase
+    .from('blocks')
+    .select('id, block_code, block_name, goal, training_element, description, training_category_id')
+    .order('id', { ascending: true })
+
+  const { data, error } = await query
+
+  if (!error) {
+    return (data ?? []) as BlockRow[]
+  }
+
+  if (!isMissingTrainingCategoryColumnError(error)) {
+    throw error
+  }
+
+  const fallback = await supabase
     .from('blocks')
     .select('id, block_code, block_name, goal, training_element, description')
     .order('id', { ascending: true })
 
-  if (error) throw error
-  return (data ?? []) as BlockRow[]
+  if (fallback.error) throw fallback.error
+
+  return (fallback.data ?? []).map((row) => ({
+    ...row,
+    training_category_id: null,
+  })) as BlockRow[]
 }
 
 async function fetchBlockSections() {
@@ -123,19 +176,66 @@ function hydrateBlocks(
 }
 
 export async function fetchBlockIdentityRows() {
+  return await fetchBlockIdentityRowsByCategory()
+}
+
+export async function fetchBlockIdentityRowsByCategory(
+  options?: {
+    trainingCategoryId?: number
+    uncategorizedOnly?: boolean
+  },
+) {
+  if (options?.uncategorizedOnly || typeof options?.trainingCategoryId === 'number') {
+    const supabase = await createClient()
+    let query = supabase
+      .from('blocks')
+      .select('id, block_code, block_name, training_category_id')
+      .order('id', { ascending: true })
+
+    if (options.uncategorizedOnly) {
+      query = query.is('training_category_id', null)
+    } else if (typeof options.trainingCategoryId === 'number') {
+      query = query.eq('training_category_id', options.trainingCategoryId)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return (data ?? []) as Array<{ id: number; block_code: string | null; block_name: string | null; training_category_id: number | null }>
+  }
+
   const supabase = await createClient()
-  const { data, error } = await supabase
+  const query = supabase
+    .from('blocks')
+    .select('id, block_code, block_name, training_category_id')
+    .order('id', { ascending: true })
+
+  const { data, error } = await query
+
+  if (!error) {
+    return (data ?? []) as Array<{ id: number; block_code: string | null; block_name: string | null; training_category_id: number | null }>
+  }
+
+  if (!isMissingTrainingCategoryColumnError(error)) {
+    throw error
+  }
+
+  const fallback = await supabase
     .from('blocks')
     .select('id, block_code, block_name')
     .order('id', { ascending: true })
 
-  if (error) throw error
-  return (data ?? []) as Array<{ id: number; block_code: string | null; block_name: string | null }>
+  if (fallback.error) throw fallback.error
+
+  return (fallback.data ?? []).map((row) => ({
+    ...row,
+    training_category_id: null,
+  })) as Array<{ id: number; block_code: string | null; block_name: string | null; training_category_id: number | null }>
 }
 
 function validateBlockIdentity(
   payload: BlockTemplatePayload,
   existingBlocks: Array<{ id: number; block_code: string | null; block_name: string | null }>,
+  options?: { ignoreBlockId?: number },
 ) {
   const blockCode = cleanText(payload.blockCode || payload.blockName)
   const blockName = cleanText(payload.blockName || payload.blockCode)
@@ -146,12 +246,13 @@ function validateBlockIdentity(
 
   const normalizedCode = normalizeUniqueValue(blockCode)
   const normalizedName = normalizeUniqueValue(blockName)
+  const comparableBlocks = existingBlocks.filter((block) => block.id !== options?.ignoreBlockId)
 
-  if (existingBlocks.some((block) => normalizeUniqueValue(block.block_code) === normalizedCode)) {
+  if (comparableBlocks.some((block) => normalizeUniqueValue(block.block_code) === normalizedCode)) {
     return `資料庫已存在相同 Block Code：${blockCode}`
   }
 
-  if (existingBlocks.some((block) => normalizeUniqueValue(block.block_name) === normalizedName)) {
+  if (comparableBlocks.some((block) => normalizeUniqueValue(block.block_name) === normalizedName)) {
     return `資料庫已存在相同顯示名稱：${blockName}`
   }
 
@@ -179,57 +280,37 @@ function sanitizeSections(payload: BlockTemplatePayload) {
     .filter((section) => section.section_name && section.exercises.length > 0)
 }
 
-export async function getBlockManagementSnapshot() {
-  const [blocks, sections, exercises] = await Promise.all([fetchBlockRows(), fetchBlockSections(), fetchBlockExercises()])
-
-  return {
-    blocks: hydrateBlocks(blocks, sections, exercises),
-  }
+async function getBlockSnapshotById(blockId: number) {
+  const snapshot = await getBlockManagementSnapshot()
+  return snapshot.blocks.find((block) => block.id === blockId) ?? null
 }
 
-export async function createBlockTemplateForCoach(
-  coachProfile: CoachProfile,
+async function writeTemplateSectionsAndExercises(
+  admin: NonNullable<Awaited<ReturnType<typeof ensureAdminClient>>['admin']>,
+  blockId: number,
   payload: BlockTemplatePayload,
-): Promise<AdminMutationResult<BlockTemplateRecord>> {
-  const { admin, error } = await ensureAdminClient()
-  if (!admin) return { error: error ?? '無法執行板塊建立。' }
-
-  const existingBlocks = await fetchBlockIdentityRows()
-  const identityError = validateBlockIdentity(payload, existingBlocks)
-  if (identityError) {
-    return { error: identityError }
-  }
-
+) {
   const sanitizedSections = sanitizeSections(payload)
   const exerciseCount = sanitizedSections.reduce((sum, section) => sum + section.exercises.length, 0)
   if (exerciseCount === 0) {
-    return { error: '請至少填入一個動作名稱。' }
+    return { error: '請至少填入一個動作名稱。', exerciseCount: 0 }
   }
 
-  const blockCode = cleanText(payload.blockCode || payload.blockName)
-  const blockName = cleanText(payload.blockName || payload.blockCode)
+  const { error: deleteExercisesError } = await admin.from('block_exercises').delete().eq('block_id', blockId)
+  if (deleteExercisesError) {
+    return { error: deleteExercisesError.message, exerciseCount: 0 }
+  }
 
-  const { data: insertedBlock, error: insertBlockError } = await admin
-    .from('blocks')
-    .insert({
-      block_code: blockCode,
-      block_name: blockName,
-      goal: cleanText(payload.goal),
-      training_element: cleanText(payload.trainingElement),
-      description: cleanText(payload.description) || '由手動模板建立',
-    })
-    .select('id')
-    .single()
-
-  if (insertBlockError || !insertedBlock) {
-    return { error: insertBlockError?.message ?? '建立板塊失敗。' }
+  const { error: deleteSectionsError } = await admin.from('block_sections').delete().eq('block_id', blockId)
+  if (deleteSectionsError) {
+    return { error: deleteSectionsError.message, exerciseCount: 0 }
   }
 
   for (const [sectionIndex, section] of sanitizedSections.entries()) {
     const { data: insertedSection, error: insertSectionError } = await admin
       .from('block_sections')
       .insert({
-        block_id: insertedBlock.id,
+        block_id: blockId,
         section_name: section.section_name,
         order_num: sectionIndex + 1,
       })
@@ -237,11 +318,11 @@ export async function createBlockTemplateForCoach(
       .single()
 
     if (insertSectionError || !insertedSection) {
-      return { error: insertSectionError?.message ?? '建立板塊區段失敗。' }
+      return { error: insertSectionError?.message ?? '建立板塊區段失敗。', exerciseCount: 0 }
     }
 
     const exerciseRows = section.exercises.map((exercise, exerciseIndex) => ({
-      block_id: insertedBlock.id,
+      block_id: blockId,
       section_id: insertedSection.id,
       exercise_name: exercise.exercise_name,
       sets: exercise.sets,
@@ -257,19 +338,142 @@ export async function createBlockTemplateForCoach(
 
     const { error: insertExerciseError } = await admin.from('block_exercises').insert(exerciseRows)
     if (insertExerciseError) {
-      return { error: insertExerciseError.message }
+      return { error: insertExerciseError.message, exerciseCount: 0 }
     }
   }
 
-  const snapshot = await getBlockManagementSnapshot()
-  const createdBlock = snapshot.blocks.find((block) => block.id === Number(insertedBlock.id))
+  return { error: null, exerciseCount }
+}
+
+export async function getBlockManagementSnapshot(options?: { trainingCategoryId?: number; uncategorizedOnly?: boolean }) {
+  const [blocks, sections, exercises] = await Promise.all([
+    fetchBlockRowsByCategory(options),
+    fetchBlockSections(),
+    fetchBlockExercises(),
+  ])
+
+  return {
+    blocks: hydrateBlocks(blocks, sections, exercises),
+  }
+}
+
+export async function getBlocksByTrainingCategoryId(trainingCategoryId: number) {
+  return await getBlockManagementSnapshot({ trainingCategoryId })
+}
+
+export async function getUncategorizedBlocks() {
+  return await getBlockManagementSnapshot({ uncategorizedOnly: true })
+}
+
+export async function createBlockTemplateForCoach(
+  coachProfile: CoachProfile,
+  payload: BlockTemplatePayload,
+): Promise<AdminMutationResult<BlockTemplateRecord>> {
+  const { admin, error } = await ensureAdminClient()
+  if (!admin) return { error: error ?? '無法執行板塊建立。' }
+
+  const existingBlocks = await fetchBlockIdentityRows()
+  const identityError = validateBlockIdentity(payload, existingBlocks)
+  if (identityError) {
+    return { error: identityError }
+  }
+
+  const blockCode = cleanText(payload.blockCode || payload.blockName)
+  const blockName = cleanText(payload.blockName || payload.blockCode)
+
+  const { data: insertedBlock, error: insertBlockError } = await admin
+    .from('blocks')
+    .insert({
+      block_code: blockCode,
+      block_name: blockName,
+      goal: cleanText(payload.goal),
+      training_element: cleanText(payload.trainingElement),
+      description: cleanText(payload.description) || '由手動模板建立',
+      ...(typeof payload.trainingCategoryId === 'number' ? { training_category_id: payload.trainingCategoryId } : {}),
+    })
+    .select('id')
+    .single()
+
+  if (insertBlockError || !insertedBlock) {
+    return { error: insertBlockError?.message ?? '建立板塊失敗。' }
+  }
+
+  const writeResult = await writeTemplateSectionsAndExercises(admin, insertedBlock.id, payload)
+  if (writeResult.error) {
+    return { error: writeResult.error }
+  }
+
+  const createdBlock = await getBlockSnapshotById(Number(insertedBlock.id))
   if (!createdBlock) {
     return { error: '板塊已建立，但重新讀取詳細內容失敗。' }
   }
 
   return {
     data: createdBlock,
-    message: `已建立板塊模板，共寫入 ${exerciseCount} 個動作。`,
+    message: `已建立板塊模板，共寫入 ${writeResult.exerciseCount} 個動作。`,
+  }
+}
+
+export async function updateBlockTemplateForCoach(
+  coachProfile: CoachProfile,
+  blockId: number,
+  payload: BlockTemplatePayload,
+): Promise<AdminMutationResult<BlockTemplateRecord>> {
+  const { admin, error } = await ensureAdminClient()
+  if (!admin) return { error: error ?? '無法執行板塊更新。' }
+
+  const { data: blockRow, error: blockError } = await admin
+    .from('blocks')
+    .select('id')
+    .eq('id', blockId)
+    .maybeSingle()
+
+  if (blockError) {
+    return { error: blockError.message }
+  }
+
+  if (!blockRow) {
+    return { error: '找不到要編輯的板塊。' }
+  }
+
+  const existingBlocks = await fetchBlockIdentityRows()
+  const identityError = validateBlockIdentity(payload, existingBlocks, { ignoreBlockId: blockId })
+  if (identityError) {
+    return { error: identityError }
+  }
+
+  const blockCode = cleanText(payload.blockCode || payload.blockName)
+  const blockName = cleanText(payload.blockName || payload.blockCode)
+
+  const { error: updateBlockError } = await admin
+    .from('blocks')
+    .update({
+      block_code: blockCode,
+      block_name: blockName,
+      goal: cleanText(payload.goal),
+      training_element: cleanText(payload.trainingElement),
+      description: cleanText(payload.description) || '由手動模板建立',
+      training_category_id: typeof payload.trainingCategoryId === 'number' ? payload.trainingCategoryId : null,
+    })
+    .eq('id', blockId)
+
+  if (updateBlockError) {
+    return { error: updateBlockError.message }
+  }
+
+  const writeResult = await writeTemplateSectionsAndExercises(admin, blockId, payload)
+  if (writeResult.error) {
+    return { error: writeResult.error }
+  }
+
+  const updatedBlock = await getBlockSnapshotById(blockId)
+  if (!updatedBlock) {
+    return { error: '板塊已更新，但重新讀取詳細內容失敗。' }
+  }
+
+  return {
+    data: updatedBlock,
+    message: `已更新板塊模板，共寫入 ${writeResult.exerciseCount} 個動作。`,
   }
 }
 
@@ -277,11 +481,17 @@ export async function importBlockTemplatesForCoach(
   coachProfile: CoachProfile,
   blocks: ImportedBlockTemplate[],
   description: string,
+  options?: {
+    trainingCategoryId?: number | null
+  },
 ): Promise<AdminMutationResult<{ importedCount: number; importedBlocks: BlockTemplateRecord[] }>> {
   const importedBlocks: BlockTemplateRecord[] = []
 
   for (const block of blocks) {
-    const result = await createBlockTemplateForCoach(coachProfile, toTemplatePayload(block, description))
+    const result = await createBlockTemplateForCoach(coachProfile, {
+      ...toTemplatePayload(block, description),
+      trainingCategoryId: typeof options?.trainingCategoryId === 'number' ? options.trainingCategoryId : null,
+    })
     if (result.error || !result.data) {
       return {
         error: result.error ?? `匯入板塊 ${block.sheetName} 失敗。`,

@@ -1,46 +1,57 @@
-import { ProfileStatusCard } from '@/components/auth/profile-status-card'
-import { CoachBlockManager } from '@/components/coach/coach-block-manager'
-import { AppShell } from '@/components/layout/app-shell'
+import { BlockTaxonomyBrowser } from '@/components/coach/block-taxonomy-browser'
+import { BlockTaxonomyCreateForm } from '@/components/coach/block-taxonomy-create-form'
+import { BlockTaxonomyErrorState } from '@/components/coach/block-taxonomy-error-state'
+import { CoachBlocksShell } from '@/components/coach/coach-blocks-shell'
 import { requireCoachAccess } from '@/lib/auth/roles'
-import { getBlockManagementSnapshot } from '@/services/block-management'
+import { describeBlockTaxonomyError } from '@/services/block-taxonomy-error'
+import { getTaxonomyRootSummary } from '@/services/block-taxonomy'
 
 export default async function CoachBlocksPage() {
   const context = await requireCoachAccess('/coach/login')
-  const coachProfile = context.coachProfile
 
-  if (!coachProfile) {
-    return (
-      <AppShell
-        title="板塊管理"
-        description="目前登入帳號尚未對應到 coach profile，因此無法顯示板塊管理內容。"
-        role="coach"
-        userEmail={context.user.email}
-        roleLabel="教練"
-        currentPath="/coach/blocks"
-      >
-        <ProfileStatusCard
-          title="找不到對應的 coach profile"
-          description="目前這個登入帳號尚未對應到 `coaches` 資料，因此無法顯示教練端板塊內容。請使用教練帳號登入，或確認這個 Email 是否已建立教練端權限。"
-          loginHref="/coach/login"
-          loginLabel="返回教練登入"
-        />
-      </AppShell>
-    )
+  let snapshot: Awaited<ReturnType<typeof getTaxonomyRootSummary>> | null = null
+  let failure: ReturnType<typeof describeBlockTaxonomyError> | null = null
+
+  if (context.coachProfile) {
+    try {
+      snapshot = await getTaxonomyRootSummary()
+    } catch (error) {
+      failure = describeBlockTaxonomyError(error)
+    }
   }
 
-  const roleLabel = coachProfile.is_head_coach ? '總教練' : '教練'
-  const snapshot = await getBlockManagementSnapshot()
-
   return (
-    <AppShell
+    <CoachBlocksShell
+      coachProfile={context.coachProfile}
+      userEmail={context.user.email ?? ''}
       title="板塊管理"
-      description="集中管理板塊模板，支援手動建立、查看詳細內容、刪除與 Excel 多工作表匯入。"
-      role="coach"
-      userEmail={context.user.email}
-      roleLabel={roleLabel}
-      currentPath="/coach/blocks"
+      description={failure ? '板塊分類頁面目前無法載入。' : '先從專項資料夾往下瀏覽，再進入年齡分級、訓練分類與最終板塊內容。'}
     >
-      <CoachBlockManager initialBlocks={snapshot.blocks} />
-    </AppShell>
+      {failure ? (
+        <BlockTaxonomyErrorState title={failure.title} description={failure.description} />
+      ) : snapshot ? (
+        <BlockTaxonomyBrowser
+          eyebrow="Block Taxonomy"
+          title="板塊分類"
+          description="這一層先管理專項。點進專項後再進一步查看年齡分級與訓練分類。"
+          entries={[
+            ...snapshot.sports.map((sport) => ({
+              id: sport.id,
+              name: sport.name,
+              href: `/coach/blocks/sport/${sport.id}`,
+              meta: `${sport.ageGroupCount} 個年齡分級`,
+            })),
+            {
+              id: 'uncategorized',
+              name: '未分類',
+              href: '/coach/blocks/uncategorized',
+              meta: `${snapshot.uncategorizedBlockCount} 個板塊尚未分類`,
+            },
+          ]}
+          emptyMessage="目前還沒有任何專項分類。"
+          createForm={<BlockTaxonomyCreateForm actionLabel="新增專項" endpoint="/api/coach/block-taxonomy/sports" placeholder="例如：棒球、一般人、籃球" />}
+        />
+      ) : null}
+    </CoachBlocksShell>
   )
 }

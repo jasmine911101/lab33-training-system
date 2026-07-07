@@ -16,6 +16,7 @@ export async function POST(request: Request) {
 
   const bodyRecord = body as Record<string, unknown>
   const sectionRows = Array.isArray(bodyRecord.sections) ? bodyRecord.sections as Array<Record<string, unknown>> : []
+  const trainingCategoryId = bodyRecord.trainingCategoryId == null ? null : Number(bodyRecord.trainingCategoryId)
 
   const result = await createBlockTemplateForCoach(context.coachProfile, {
     blockCode: String(bodyRecord.blockCode ?? ''),
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
     goal: String(bodyRecord.goal ?? ''),
     trainingElement: String(bodyRecord.trainingElement ?? ''),
     description: String(bodyRecord.description ?? ''),
+    trainingCategoryId: Number.isFinite(trainingCategoryId) ? trainingCategoryId : null,
     sections: sectionRows.map((section) => ({
       section_name: String(section.section_name ?? ''),
       exercises: Array.isArray(section.exercises)
