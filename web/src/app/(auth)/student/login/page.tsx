@@ -15,7 +15,6 @@ export default async function StudentLoginPage() {
     if (context.hasCoachAccess) {
       redirect('/coach')
     }
-    redirect('/dashboard')
   }
 
   return (

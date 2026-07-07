@@ -261,6 +261,8 @@ function ActionDropdown({
   useEffect(() => {
     if (!open) return
 
+    let isVisibleTrigger = false
+
     function updateMenuPosition() {
       const trigger = buttonRef.current
       if (!trigger) return
@@ -268,9 +270,12 @@ function ActionDropdown({
       const rect = trigger.getBoundingClientRect()
       const isHiddenTrigger = trigger.offsetParent === null || rect.width === 0 || rect.height === 0
       if (isHiddenTrigger) {
+        isVisibleTrigger = false
         setMenuStyle(null)
         return
       }
+
+      isVisibleTrigger = true
 
       const viewportWidth = window.innerWidth
       const viewportHeight = window.innerHeight
@@ -289,6 +294,7 @@ function ActionDropdown({
     }
 
     function handlePointerDown(event: MouseEvent | PointerEvent) {
+      if (!isVisibleTrigger) return
       const target = event.target as Node
       if (buttonRef.current?.contains(target)) return
       if (menuRef.current?.contains(target)) return
@@ -296,12 +302,17 @@ function ActionDropdown({
     }
 
     function handleKeyDown(event: KeyboardEvent) {
+      if (!isVisibleTrigger) return
       if (event.key === 'Escape') {
         onClose()
       }
     }
 
     updateMenuPosition()
+    if (!isVisibleTrigger) {
+      return
+    }
+
     document.addEventListener('pointerdown', handlePointerDown)
     document.addEventListener('keydown', handleKeyDown)
     window.addEventListener('resize', updateMenuPosition)
@@ -379,6 +390,8 @@ function ManagedAthletesSection({
   openActionId,
   setOpenActionId,
   actionLoadingId,
+  resetPasswordFeedback,
+  resetPasswordError,
   handleAssignCoach,
   handleResetPassword,
   handleDeleteAthlete,
@@ -393,6 +406,8 @@ function ManagedAthletesSection({
   openActionId: number | null
   setOpenActionId: React.Dispatch<React.SetStateAction<number | null>>
   actionLoadingId: number | null
+  resetPasswordFeedback: { email: string; password: string; message: string } | null
+  resetPasswordError: string | null
   handleAssignCoach: (athlete: ManagedAthleteRecord) => void
   handleResetPassword: (athlete: ManagedAthleteRecord) => Promise<void>
   handleDeleteAthlete: (athlete: ManagedAthleteRecord) => Promise<void>
@@ -449,6 +464,18 @@ function ManagedAthletesSection({
           </div>
         ) : null}
       </div>
+
+      {resetPasswordError ? (
+        <p className="mt-5 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{resetPasswordError}</p>
+      ) : null}
+
+      {resetPasswordFeedback ? (
+        <div className="mt-5 rounded-[1.25rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+          <p className="font-semibold">{resetPasswordFeedback.message}</p>
+          <p className="mt-2">Email：{resetPasswordFeedback.email}</p>
+          <p className="mt-1 font-mono">Temporary Password：{resetPasswordFeedback.password}</p>
+        </div>
+      ) : null}
 
       {filteredAthletes.length === 0 ? (
         <div className="lab-card-muted mt-6 px-5 py-6 text-sm text-slate-600">目前沒有符合條件的學員。</div>
@@ -608,6 +635,8 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
   const [createdTempPassword, setCreatedTempPassword] = useState<{ email: string; password: string } | null>(null)
   const [openActionId, setOpenActionId] = useState<number | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
+  const [resetPasswordFeedback, setResetPasswordFeedback] = useState<{ email: string; password: string; message: string } | null>(null)
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(null)
   const [assignmentDialog, setAssignmentDialog] = useState<AssignmentDialogState | null>(null)
   const [assignmentSaving, setAssignmentSaving] = useState(false)
   const [assignmentError, setAssignmentError] = useState<string | null>(null)
@@ -707,13 +736,24 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
 
   async function handleResetPassword(athlete: ManagedAthleteRecord) {
     setActionLoadingId(athlete.id)
+    setResetPasswordError(null)
+    setResetPasswordFeedback(null)
 
     try {
-      const payload = await requestJson<{ athlete: ManagedAthleteRecord }>(`/api/coach/athletes/${athlete.id}/reset-password`, {
+      const payload = await requestJson<{ athlete: ManagedAthleteRecord; tempPassword?: string; message?: string }>(`/api/coach/athletes/${athlete.id}/reset-password`, {
         method: 'POST',
         body: JSON.stringify({}),
       })
       setAthletes((current) => current.map((item) => (item.id === athlete.id ? payload.athlete : item)))
+      if (payload.tempPassword) {
+        setResetPasswordFeedback({
+          email: payload.athlete.email ?? athlete.email ?? '-',
+          password: payload.tempPassword,
+          message: payload.message ?? '已重設臨時密碼。',
+        })
+      }
+    } catch (requestError) {
+      setResetPasswordError(requestError instanceof Error ? requestError.message : '重設臨時密碼失敗。')
     } finally {
       setActionLoadingId(null)
     }
@@ -776,6 +816,8 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
         openActionId={openActionId}
         setOpenActionId={setOpenActionId}
         actionLoadingId={actionLoadingId}
+        resetPasswordFeedback={resetPasswordFeedback}
+        resetPasswordError={resetPasswordError}
         handleAssignCoach={openAssignCoachDialog}
         handleResetPassword={handleResetPassword}
         handleDeleteAthlete={handleDeleteAthlete}

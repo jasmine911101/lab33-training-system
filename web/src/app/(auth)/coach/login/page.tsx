@@ -17,7 +17,6 @@ export default async function CoachLoginPage() {
     if (context.hasStudentAccess) {
       redirect('/student')
     }
-    redirect('/dashboard')
   }
 
   const registration = getCoachRegistrationAvailability()
