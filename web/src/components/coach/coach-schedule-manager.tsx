@@ -67,6 +67,68 @@ type EditableSection = {
   rows: EditableExercise[]
 }
 
+type WeekMarker = {
+  id: string
+  startDate: string
+  endDate: string
+  weekNum: string
+  note: string
+  colorKey: string
+}
+
+const DEFAULT_WEEK_MARKER_COLOR_KEY = 'sky'
+
+const WEEK_MARKER_COLORS = [
+  {
+    key: 'sky',
+    name: '藍色',
+    bandClass: 'bg-sky-100/90 text-sky-800',
+    badgeClass: 'bg-sky-600 text-white',
+    chipClass: 'bg-sky-100 text-sky-800',
+    swatchClass: 'bg-sky-500',
+  },
+  {
+    key: 'emerald',
+    name: '綠色',
+    bandClass: 'bg-emerald-100/90 text-emerald-800',
+    badgeClass: 'bg-emerald-600 text-white',
+    chipClass: 'bg-emerald-100 text-emerald-800',
+    swatchClass: 'bg-emerald-500',
+  },
+  {
+    key: 'amber',
+    name: '橘色',
+    bandClass: 'bg-amber-100/90 text-amber-900',
+    badgeClass: 'bg-amber-500 text-white',
+    chipClass: 'bg-amber-100 text-amber-900',
+    swatchClass: 'bg-amber-500',
+  },
+  {
+    key: 'violet',
+    name: '紫色',
+    bandClass: 'bg-violet-100/90 text-violet-800',
+    badgeClass: 'bg-violet-600 text-white',
+    chipClass: 'bg-violet-100 text-violet-800',
+    swatchClass: 'bg-violet-500',
+  },
+  {
+    key: 'rose',
+    name: '粉色',
+    bandClass: 'bg-rose-100/90 text-rose-800',
+    badgeClass: 'bg-rose-500 text-white',
+    chipClass: 'bg-rose-100 text-rose-800',
+    swatchClass: 'bg-rose-500',
+  },
+  {
+    key: 'slate',
+    name: '灰色',
+    bandClass: 'bg-slate-200/90 text-slate-800',
+    badgeClass: 'bg-slate-600 text-white',
+    chipClass: 'bg-slate-200 text-slate-800',
+    swatchClass: 'bg-slate-500',
+  },
+] as const
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -118,6 +180,57 @@ function truncateText(value: string, maxLength: number) {
 function weekdayFromIso(date: string) {
   const weekday = new Date(`${date}T00:00:00`).getDay() || 7
   return String(weekday)
+}
+
+function normalizeRange(startDate: string, endDate: string) {
+  if (startDate <= endDate) {
+    return { startDate, endDate }
+  }
+
+  return { startDate: endDate, endDate: startDate }
+}
+
+function resolveWeekMarker(date: string, markers: WeekMarker[]) {
+  for (let index = markers.length - 1; index >= 0; index -= 1) {
+    const marker = markers[index]
+    if (rangeIncludes(date, marker.startDate, marker.endDate)) {
+      return marker
+    }
+  }
+
+  return null
+}
+
+function getWeekMarkerColor(colorKey?: string) {
+  return WEEK_MARKER_COLORS.find((option) => option.key === colorKey) ?? WEEK_MARKER_COLORS[0]
+}
+
+function loadWeekMarkers(storageKey: string) {
+  if (typeof window === 'undefined') return [] as WeekMarker[]
+
+  try {
+    const raw = window.localStorage.getItem(storageKey)
+    if (!raw) return [] as WeekMarker[]
+
+    const parsed = JSON.parse(raw) as WeekMarker[]
+    if (!Array.isArray(parsed)) return [] as WeekMarker[]
+
+    return parsed.filter(
+      (marker) =>
+        marker &&
+        typeof marker.id === 'string' &&
+        typeof marker.startDate === 'string' &&
+        typeof marker.endDate === 'string' &&
+        typeof marker.weekNum === 'string' &&
+        typeof marker.note === 'string',
+    )
+    .map((marker) => ({
+      ...marker,
+      colorKey: typeof marker.colorKey === 'string' ? marker.colorKey : DEFAULT_WEEK_MARKER_COLOR_KEY,
+    }))
+  } catch {
+    return [] as WeekMarker[]
+  }
 }
 
 function defaultAssignmentForm(date: string, previous?: AssignmentFormState): AssignmentFormState {
@@ -826,6 +939,13 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
   const detailSectionRef = useRef<HTMLElement | null>(null)
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [visibleMonth, setVisibleMonth] = useState(initialDate.slice(0, 7))
+  const weekMarkerStorageKey = `lab33-athlete-week-markers-${athleteId}`
+  const [weekMarkers, setWeekMarkers] = useState<WeekMarker[]>(() => loadWeekMarkers(weekMarkerStorageKey))
+  const [weekRangeStartDate, setWeekRangeStartDate] = useState(initialDate)
+  const [weekRangeEndDate, setWeekRangeEndDate] = useState(initialDate)
+  const [weekRangeNumber, setWeekRangeNumber] = useState('1')
+  const [weekRangeNote, setWeekRangeNote] = useState('')
+  const [weekRangeColorKey, setWeekRangeColorKey] = useState(DEFAULT_WEEK_MARKER_COLOR_KEY)
   const [selectedSportId, setSelectedSportId] = useState<string>(initialSportId)
   const [selectedAgeGroupId, setSelectedAgeGroupId] = useState<string>(initialAgeGroupId ? String(initialAgeGroupId) : '')
   const [selectedTrainingCategoryId, setSelectedTrainingCategoryId] = useState<string>(initialTrainingCategoryId ? String(initialTrainingCategoryId) : '')
@@ -834,6 +954,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
     ({
       ...defaultAssignmentForm(initialDate),
       blockId: String(initialVisibleBlocks[0]?.id ?? ''),
+      weekNum: resolveWeekMarker(initialDate, loadWeekMarkers(weekMarkerStorageKey))?.weekNum ?? '1',
       trainingCategory:
         taxonomy.trainingCategories.find((category) => category.id === initialTrainingCategoryId)?.name ??
         TRAINING_CATEGORIES[0],
@@ -932,23 +1053,37 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
     [schedule.generalEvents, selectedDate],
   )
 
+  const selectedDateWeekMarker = useMemo(() => resolveWeekMarker(selectedDate, weekMarkers), [selectedDate, weekMarkers])
+
   const monthDays = useMemo(() => {
     const base = firstDayOfMonth(visibleMonth)
     const year = base.getFullYear()
     const month = base.getMonth()
     const firstWeekday = (base.getDay() + 6) % 7
     const daysInMonth = new Date(year, month + 1, 0).getDate()
-    const cells: Array<{ date: string; day: number; inCurrentMonth: boolean; items: ScheduleItem[] }> = []
+    const cells: Array<{ date: string; day: number; inCurrentMonth: boolean; items: ScheduleItem[]; weekMarker: WeekMarker | null }> = []
 
     for (let index = 0; index < firstWeekday; index += 1) {
       const date = new Date(year, month, index - firstWeekday + 1)
       const iso = `${date.getFullYear()}-${padMonth(date.getMonth() + 1)}-${padMonth(date.getDate())}`
-      cells.push({ date: iso, day: date.getDate(), inCurrentMonth: false, items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)) })
+      cells.push({
+        date: iso,
+        day: date.getDate(),
+        inCurrentMonth: false,
+        items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)),
+        weekMarker: resolveWeekMarker(iso, weekMarkers),
+      })
     }
 
     for (let day = 1; day <= daysInMonth; day += 1) {
       const iso = `${visibleMonth}-${padMonth(day)}`
-      cells.push({ date: iso, day, inCurrentMonth: true, items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)) })
+      cells.push({
+        date: iso,
+        day,
+        inCurrentMonth: true,
+        items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)),
+        weekMarker: resolveWeekMarker(iso, weekMarkers),
+      })
     }
 
     while (cells.length % 7 !== 0) {
@@ -956,11 +1091,21 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
       const date = new Date(`${last.date}T00:00:00`)
       date.setDate(date.getDate() + 1)
       const iso = `${date.getFullYear()}-${padMonth(date.getMonth() + 1)}-${padMonth(date.getDate())}`
-      cells.push({ date: iso, day: date.getDate(), inCurrentMonth: false, items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)) })
+      cells.push({
+        date: iso,
+        day: date.getDate(),
+        inCurrentMonth: false,
+        items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)),
+        weekMarker: resolveWeekMarker(iso, weekMarkers),
+      })
     }
 
     return cells
-  }, [calendarItems, visibleMonth])
+  }, [calendarItems, visibleMonth, weekMarkers])
+
+  useEffect(() => {
+    window.localStorage.setItem(weekMarkerStorageKey, JSON.stringify(weekMarkers))
+  }, [weekMarkerStorageKey, weekMarkers])
 
   useEffect(() => {
     if (!isDayModalOpen) return
@@ -988,10 +1133,66 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
   }
 
   function selectDate(date: string, shouldOpenModal: boolean) {
+    const marker = resolveWeekMarker(date, weekMarkers)
     setSelectedDate(date)
-    setAssignmentForm((current) => ({ ...current, startDate: date, endDate: date, dayNum: weekdayFromIso(date) }))
+    setAssignmentForm((current) => ({
+      ...current,
+      startDate: date,
+      endDate: date,
+      dayNum: weekdayFromIso(date),
+      weekNum: marker?.weekNum ?? current.weekNum,
+    }))
     setEventForm((current) => ({ ...current, startDate: date, endDate: date }))
     setIsDayModalOpen(shouldOpenModal)
+  }
+
+  function handleApplyWeekMarker() {
+    const normalized = normalizeRange(weekRangeStartDate, weekRangeEndDate)
+    if (!normalized.startDate || !normalized.endDate || !weekRangeNumber.trim()) {
+      setError('請先完整選擇週期開始日期、結束日期與 Week 編號。')
+      return
+    }
+
+    const nextMarker: WeekMarker = {
+      id: `marker-${Date.now()}`,
+      startDate: normalized.startDate,
+      endDate: normalized.endDate,
+      weekNum: weekRangeNumber.trim(),
+      note: weekRangeNote.trim(),
+      colorKey: weekRangeColorKey || DEFAULT_WEEK_MARKER_COLOR_KEY,
+    }
+
+    setWeekMarkers((current) => [...current, nextMarker])
+    setMessage(`已套用 Week ${nextMarker.weekNum}：${normalized.startDate} ～ ${normalized.endDate}`)
+    setError(null)
+
+    if (rangeIncludes(selectedDate, normalized.startDate, normalized.endDate)) {
+      setAssignmentForm((current) => ({ ...current, weekNum: nextMarker.weekNum }))
+    }
+  }
+
+  function handleDeleteWeekMarker(markerId: string) {
+    const targetMarker = weekMarkers.find((marker) => marker.id === markerId)
+    if (!targetMarker) return
+
+    const confirmed = window.confirm(`確認要刪除 Week ${targetMarker.weekNum}（${targetMarker.startDate} ～ ${targetMarker.endDate}）嗎？`)
+    if (!confirmed) return
+
+    setWeekMarkers((current) => current.filter((marker) => marker.id !== markerId))
+    setMessage(`已刪除 Week ${targetMarker.weekNum}：${targetMarker.startDate} ～ ${targetMarker.endDate}`)
+    setError(null)
+
+    const nextSelectedDateMarker = resolveWeekMarker(
+      selectedDate,
+      weekMarkers.filter((marker) => marker.id !== markerId),
+    )
+
+    if (!nextSelectedDateMarker) {
+      setAssignmentForm((current) => ({
+        ...current,
+        weekNum: current.startDate === selectedDate ? '1' : current.weekNum,
+      }))
+    }
   }
 
   function jumpToDetail(assignmentId: string) {
@@ -1078,6 +1279,86 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
         </div>
 
         <div className="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
+          <div className="mb-5 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4 sm:px-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-slate-900">行事曆週期標示</p>
+                <p className="text-sm text-slate-500">先設定日期區間，再標示這段時間屬於哪個 Week。這次實作採用此頁面的本地儲存，不會修改資料庫。</p>
+                <p className="text-sm font-medium text-slate-700">
+                  已選週期範圍：{normalizeRange(weekRangeStartDate, weekRangeEndDate).startDate} ～ {normalizeRange(weekRangeStartDate, weekRangeEndDate).endDate}
+                </p>
+              </div>
+              {selectedDateWeekMarker ? (
+                <div className={`rounded-full px-4 py-2 text-sm font-semibold ${getWeekMarkerColor(selectedDateWeekMarker.colorKey).chipClass}`}>
+                  {selectedDate} 屬於 Week {selectedDateWeekMarker.weekNum}{selectedDateWeekMarker.note ? `・${selectedDateWeekMarker.note}` : ''}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr_160px_1fr_auto]">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">開始日期</label>
+                <input type="date" className="lab-input" value={weekRangeStartDate} onChange={(event) => setWeekRangeStartDate(event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">結束日期</label>
+                <input type="date" className="lab-input" value={weekRangeEndDate} onChange={(event) => setWeekRangeEndDate(event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">Week</label>
+                <input type="number" min="1" className="lab-input" value={weekRangeNumber} onChange={(event) => setWeekRangeNumber(event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">備註</label>
+                <input className="lab-input" value={weekRangeNote} onChange={(event) => setWeekRangeNote(event.target.value)} placeholder="例如：第一週、恢復週" />
+              </div>
+              <button type="button" className="lab-btn-primary w-full xl:w-auto" onClick={handleApplyWeekMarker}>
+                套用週期
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <p className="text-sm font-semibold text-slate-700">週期顏色</p>
+              <div className="flex flex-wrap gap-2">
+                {WEEK_MARKER_COLORS.map((option) => {
+                  const isSelected = option.key === weekRangeColorKey
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => setWeekRangeColorKey(option.key)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${isSelected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}
+                      aria-pressed={isSelected}
+                    >
+                      <span className={`h-3 w-3 rounded-full ${option.swatchClass}`} />
+                      <span>{option.name}</span>
+                      <span className="text-xs">{isSelected ? '✓' : ''}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {weekMarkers.length > 0 ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {weekMarkers.map((marker) => (
+                  <div key={marker.id} className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${getWeekMarkerColor(marker.colorKey).chipClass}`}>
+                    <span>
+                      Week {marker.weekNum}｜{marker.startDate} ～ {marker.endDate}{marker.note ? `｜${marker.note}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      className="rounded-full border border-current/20 bg-white/50 px-2 py-0.5 text-[11px] font-semibold transition hover:bg-white/80"
+                      onClick={() => handleDeleteWeekMarker(marker.id)}
+                    >
+                      刪除週期
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setVisibleMonth((current) => shiftMonth(current, -1))}>上個月</button>
             <div className="text-center">
@@ -1101,12 +1382,18 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
               </div>
 
               <div className="grid gap-px rounded-b-[1.25rem] bg-slate-200" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-                {monthDays.map((cell) => {
+                {monthDays.map((cell, cellIndex) => {
                   const assignmentCount = cell.items.filter((item) => item.kind === 'assignment').length
                   const eventCount = cell.items.filter((item) => item.kind === 'event').length
                   const isSelected = cell.date === selectedDate
                   const isToday = cell.date === todayIso()
                   const previewItems = cell.items.slice(0, 2)
+                  const weekMarker = cell.weekMarker
+                  const previousCell = cellIndex % 7 === 0 ? null : monthDays[cellIndex - 1]
+                  const nextCell = cellIndex % 7 === 6 ? null : monthDays[cellIndex + 1]
+                  const isWeekSegmentStart = weekMarker ? previousCell?.weekMarker?.id !== weekMarker.id : false
+                  const isWeekSegmentEnd = weekMarker ? nextCell?.weekMarker?.id !== weekMarker.id : false
+                  const weekColor = getWeekMarkerColor(weekMarker?.colorKey)
 
                   return (
                     <button
@@ -1115,9 +1402,22 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                       onClick={() => selectDate(cell.date, cell.items.length > 2)}
                       className={`relative flex min-h-[132px] w-full min-w-0 flex-col bg-white p-3 text-left transition hover:z-10 hover:bg-slate-50 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 ${isSelected ? 'z-10 bg-orange-50 ring-2 ring-inset ring-orange-400' : ''} ${cell.inCurrentMonth ? 'text-slate-900' : 'text-slate-300'}`}
                     >
+                      {weekMarker ? (
+                        <div
+                          className={`pointer-events-none absolute left-1 right-1 top-12 h-7 ${weekColor.bandClass} ${isWeekSegmentStart ? 'rounded-l-xl pl-1' : 'rounded-l-md'} ${isWeekSegmentEnd ? 'rounded-r-xl pr-1' : 'rounded-r-md'}`}
+                        />
+                      ) : null}
+
                       <div className="flex items-start justify-between gap-2">
-                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${isSelected ? 'bg-orange-500 text-white' : isToday ? 'bg-slate-900 text-white' : cell.inCurrentMonth ? 'bg-slate-100 text-slate-900' : 'bg-slate-100 text-slate-400'}`}>
-                          {cell.day}
+                        <div className="relative z-10 space-y-2">
+                          <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${isSelected ? 'bg-orange-500 text-white' : isToday ? 'bg-slate-900 text-white' : cell.inCurrentMonth ? 'bg-slate-100 text-slate-900' : 'bg-slate-100 text-slate-400'}`}>
+                            {cell.day}
+                          </div>
+                          {weekMarker ? (
+                            <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${weekColor.badgeClass}`}>
+                              W{weekMarker.weekNum}
+                            </span>
+                          ) : null}
                         </div>
                         {(assignmentCount > 0 || eventCount > 0) ? (
                           <div className="flex flex-col items-end gap-1 text-[10px] font-semibold">
@@ -1127,7 +1427,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                         ) : null}
                       </div>
 
-                      <div className="mt-3 space-y-2">
+                      <div className="relative z-10 mt-3 space-y-2">
                         {previewItems.map((item) => (
                           <div
                             key={`${cell.date}-${item.kind}-${item.id}`}
@@ -1258,7 +1558,11 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
               <textarea className="lab-input min-h-24" value={assignmentForm.cycleGoal} onChange={(event) => setAssignmentForm((current) => ({ ...current, cycleGoal: event.target.value }))} />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><label className="text-sm font-semibold text-slate-700">開始日期</label><input type="date" className="lab-input" value={assignmentForm.startDate} onChange={(event) => setAssignmentForm((current) => ({ ...current, startDate: event.target.value }))} /></div>
+              <div className="space-y-2"><label className="text-sm font-semibold text-slate-700">開始日期</label><input type="date" className="lab-input" value={assignmentForm.startDate} onChange={(event) => {
+                const nextDate = event.target.value
+                const marker = resolveWeekMarker(nextDate, weekMarkers)
+                setAssignmentForm((current) => ({ ...current, startDate: nextDate, weekNum: marker?.weekNum ?? current.weekNum }))
+              }} /></div>
               <div className="space-y-2"><label className="text-sm font-semibold text-slate-700">結束日期</label><input type="date" className="lab-input" value={assignmentForm.endDate} onChange={(event) => setAssignmentForm((current) => ({ ...current, endDate: event.target.value }))} /></div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
