@@ -251,20 +251,22 @@ function StudentExerciseReportTable({
                 </td>
                 <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.rest || '-'}</td>
                 <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.equipment || '-'}</td>
-                <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.notes || '-'}</td>
+                <td className="border border-slate-200 px-4 py-3 text-slate-600">
+                  {row.notes ? <div>{row.notes}</div> : null}
+                  {isReported || diffLabel ? (
+                    <div className={`${row.notes ? 'mt-2' : ''} flex flex-wrap gap-2`}>
+                      {diffLabel ? <span className="lab-badge-info">與安排不同</span> : null}
+                      {isReported && row.can_report ? <span className="lab-badge-success">已回報</span> : null}
+                    </div>
+                  ) : null}
+                  {!row.notes && !isReported && !diffLabel ? '-' : null}
+                </td>
                 <td className="border border-slate-200 px-4 py-3 text-slate-600">
                   {row.video_url ? (
                     <a href={row.video_url} target="_blank" rel="noreferrer" className="lab-badge-info">
                       影片連結
                     </a>
                   ) : '-'}
-                  {row.actual_sets && row.actual_sets !== row.sets ? (
-                        <div className="text-xs font-semibold text-sky-700">與安排不同</div>
-                      ) : null}
-                  {row.actual_weight && row.actual_weight !== row.weight ? (
-                        <div className="text-xs font-semibold text-sky-700">與安排不同</div>
-                      ) : null}
-                  {diffLabel && row.can_report ? <div className="mt-2 text-xs font-semibold text-emerald-700">已回報</div> : null}
                 </td>
               </tr>
             )

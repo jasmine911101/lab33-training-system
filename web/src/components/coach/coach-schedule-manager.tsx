@@ -1311,24 +1311,24 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
               ) : null}
             </div>
 
-            <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr_160px_1fr_auto]">
-              <div className="space-y-2">
+            <div className="mt-4 flex flex-wrap items-end gap-3">
+              <div className="min-w-[180px] flex-1 space-y-2 lg:max-w-[220px]">
                 <label className="text-sm font-semibold text-slate-700">開始日期</label>
                 <input type="date" className="lab-input" value={weekRangeStartDate} onChange={(event) => setWeekRangeStartDate(event.target.value)} />
               </div>
-              <div className="space-y-2">
+              <div className="min-w-[180px] flex-1 space-y-2 lg:max-w-[220px]">
                 <label className="text-sm font-semibold text-slate-700">結束日期</label>
                 <input type="date" className="lab-input" value={weekRangeEndDate} onChange={(event) => setWeekRangeEndDate(event.target.value)} />
               </div>
-              <div className="space-y-2">
+              <div className="w-[132px] space-y-2">
                 <label className="text-sm font-semibold text-slate-700">Week</label>
                 <input type="number" min="1" className="lab-input" value={weekRangeNumber} onChange={(event) => setWeekRangeNumber(event.target.value)} />
               </div>
-              <div className="space-y-2">
+              <div className="min-w-[220px] flex-[1.15] space-y-2">
                 <label className="text-sm font-semibold text-slate-700">備註</label>
                 <input className="lab-input" value={weekRangeNote} onChange={(event) => setWeekRangeNote(event.target.value)} placeholder="例如：第一週、恢復週" />
               </div>
-              <button type="button" className="lab-btn-primary w-full xl:w-auto" onClick={handleApplyWeekMarker}>
+              <button type="button" className="lab-btn-primary w-full sm:w-auto" onClick={handleApplyWeekMarker}>
                 套用週期
               </button>
             </div>
