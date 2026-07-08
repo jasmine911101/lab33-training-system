@@ -1,18 +1,30 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { GENERAL_EVENT_TYPES, TRAINING_CATEGORIES } from '@/lib/types/schedule-management'
+import type {
+  BlockTaxonomyAgeGroupRecord,
+  BlockTaxonomySportRecord,
+  BlockTaxonomyTrainingCategoryRecord,
+} from '@/lib/types/block-taxonomy'
 import type { AthleteScheduleBundle, AssignmentDetail, BlockRecord, GeneralEventDetail } from '@/services/schedule'
 
+const UNCATEGORIZED_SELECTOR = '__uncategorized__'
+
 type ScheduleItem =
-  | { kind: 'assignment'; id: string; recordId: number; startDate: string; endDate: string; title: string; meta: string }
-  | { kind: 'event'; id: string; recordId: number; startDate: string; endDate: string; title: string; meta: string }
+  | { kind: 'assignment'; id: string; recordId: number; startDate: string; endDate: string; title: string; meta: string; previewTop: string; previewBottom: string }
+  | { kind: 'event'; id: string; recordId: number; startDate: string; endDate: string; title: string; meta: string; previewTop: string; previewBottom?: string }
 
 type CoachScheduleManagerProps = {
   athleteId: number
   initialSchedule: AthleteScheduleBundle
   blocks: BlockRecord[]
+  taxonomy: {
+    sports: BlockTaxonomySportRecord[]
+    ageGroups: BlockTaxonomyAgeGroupRecord[]
+    trainingCategories: BlockTaxonomyTrainingCategoryRecord[]
+  }
 }
 
 type AssignmentFormState = {
@@ -86,6 +98,65 @@ function apiErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
+function blockNameFromLabel(label: string) {
+  if (!label.includes('|')) return label || '未命名板塊'
+  const [, ...rest] = label.split('|')
+  const extracted = rest.join('|').trim()
+  return extracted || label.trim() || '未命名板塊'
+}
+
+function compactWeekLabel(weekLabel: string) {
+  const matched = weekLabel.match(/(\d+)/)
+  return matched ? `W${matched[1]}` : 'W-'
+}
+
+function truncateText(value: string, maxLength: number) {
+  if (value.length <= maxLength) return value
+  return `${value.slice(0, Math.max(0, maxLength - 1))}…`
+}
+
+function weekdayFromIso(date: string) {
+  const weekday = new Date(`${date}T00:00:00`).getDay() || 7
+  return String(weekday)
+}
+
+function defaultAssignmentForm(date: string, previous?: AssignmentFormState): AssignmentFormState {
+  return {
+    blockId: previous?.blockId ?? '',
+    eventName: '',
+    cycleGoal: '',
+    startDate: date,
+    endDate: date,
+    weekNum: previous?.weekNum ?? '1',
+    dayNum: weekdayFromIso(date),
+    trainingCategory: previous?.trainingCategory ?? TRAINING_CATEGORIES[0],
+    notes: '',
+  }
+}
+
+function defaultEventForm(date: string, previous?: EventFormState): EventFormState {
+  return {
+    title: '',
+    eventType: previous?.eventType ?? GENERAL_EVENT_TYPES[0],
+    startDate: date,
+    endDate: date,
+    notes: '',
+  }
+}
+
+function getInitialSportId(taxonomy: CoachScheduleManagerProps['taxonomy']) {
+  return taxonomy.sports[0] ? String(taxonomy.sports[0].id) : UNCATEGORIZED_SELECTOR
+}
+
+function getInitialAgeGroupId(taxonomy: CoachScheduleManagerProps['taxonomy'], sportId: string) {
+  return taxonomy.ageGroups.find((ageGroup) => String(ageGroup.sport_id) === sportId)?.id
+}
+
+function getInitialTrainingCategoryId(taxonomy: CoachScheduleManagerProps['taxonomy'], ageGroupId?: number) {
+  if (!ageGroupId) return undefined
+  return taxonomy.trainingCategories.find((category) => category.age_group_id === ageGroupId)?.id
+}
+
 async function requestJson<T>(input: RequestInfo, init?: RequestInit) {
   const response = await fetch(input, {
     ...init,
@@ -110,6 +181,45 @@ function DetailMeta({ label, value }: { label: string; value: string }) {
       <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</dt>
       <dd className="mt-2 text-sm font-medium text-slate-800">{value}</dd>
     </div>
+  )
+}
+
+function DeleteActionButton({
+  label,
+  pendingLabel,
+  confirmMessage,
+  onDelete,
+  onError,
+  className = 'lab-btn-secondary !min-h-10 px-4 py-2 text-sm',
+}: {
+  label: string
+  pendingLabel: string
+  confirmMessage: string
+  onDelete: () => Promise<void>
+  onError: (message: string) => void
+  className?: string
+}) {
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  async function handleDelete() {
+    const confirmed = window.confirm(confirmMessage)
+    if (!confirmed) return
+
+    setIsDeleting(true)
+    onError('')
+    try {
+      await onDelete()
+    } catch (requestError) {
+      onError(apiErrorMessage(requestError, '刪除失敗。'))
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  return (
+    <button type="button" className={className} disabled={isDeleting} onClick={() => void handleDelete()}>
+      {isDeleting ? pendingLabel : label}
+    </button>
   )
 }
 
@@ -141,33 +251,62 @@ function buildEditableSections(assignment: AssignmentDetail): EditableSection[] 
   }))
 }
 
+function ExerciseReadTable({ rows }: { rows: AssignmentDetail['sections'][number]['rows'] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-[920px] w-full border-separate border-spacing-0 text-sm">
+        <thead>
+          <tr className="text-left">
+            <th className="rounded-tl-2xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">動作名稱</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">組數</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">次數 / 時間</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">強度</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">重量</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">休息</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">工具</th>
+            <th className="rounded-tr-2xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">影片</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${row.id || row.exercise_name}-${index}`} className="bg-white">
+              <td className="border border-slate-200 px-4 py-3 font-medium text-slate-900">{row.exercise_name || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.sets || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.reps_or_time || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.intensity || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.weight || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.rest || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.equipment || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">
+                {row.video_url ? (
+                  <a href={row.video_url} target="_blank" rel="noreferrer" className="lab-badge-info">
+                    影片連結
+                  </a>
+                ) : '-'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: AssignmentDetail; athleteId: number; onUpdated: (schedule: AthleteScheduleBundle, message?: string) => void }) {
-  const [isEditing, setIsEditing] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
   const [isEditingContent, setIsEditingContent] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
   const [isSavingContent, setIsSavingContent] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [eventName, setEventName] = useState(assignment.event_name)
-  const [cycleGoal, setCycleGoal] = useState(assignment.cycle_goal)
-  const [startDate, setStartDate] = useState(assignment.start_date || todayIso())
-  const [endDate, setEndDate] = useState(assignment.end_date || assignment.start_date || todayIso())
-  const [weekNum, setWeekNum] = useState(String(assignment.week_num ?? 1))
-  const [dayNum, setDayNum] = useState(String(assignment.day_num ?? 1))
-  const [trainingCategory, setTrainingCategory] = useState(assignment.training_category || TRAINING_CATEGORIES[0])
-  const [notes, setNotes] = useState(assignment.coach_notes)
   const [editableSections, setEditableSections] = useState<EditableSection[]>(() => buildEditableSections(assignment))
-
-  function resetAssignmentForm() {
-    setEventName(assignment.event_name)
-    setCycleGoal(assignment.cycle_goal)
-    setStartDate(assignment.start_date || todayIso())
-    setEndDate(assignment.end_date || assignment.start_date || todayIso())
-    setWeekNum(String(assignment.week_num ?? 1))
-    setDayNum(String(assignment.day_num ?? 1))
-    setTrainingCategory(assignment.training_category || TRAINING_CATEGORIES[0])
-    setNotes(assignment.coach_notes)
-  }
+  const [expandedSections, setExpandedSections] = useState<string[]>([])
+  const resolvedBlockName =
+    (assignment.block_label ? blockNameFromLabel(assignment.block_label) : '') ||
+    assignment.block_name ||
+    '未命名板塊'
+  const resolvedBlockLabel =
+    assignment.block_code && resolvedBlockName !== '未命名板塊'
+      ? `${assignment.block_code} | ${resolvedBlockName}`
+      : assignment.block_label || resolvedBlockName
 
   function resetAssignmentContentForm() {
     setEditableSections(buildEditableSections(assignment))
@@ -234,45 +373,17 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
     setError(null)
   }
 
-  async function handleSave() {
-    setIsSaving(true)
-    setError(null)
-    try {
-      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/assignments/${assignment.record_id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          event_name: eventName,
-          cycle_goal: cycleGoal,
-          start_date: startDate,
-          end_date: endDate,
-          week_num: Number(weekNum || '1'),
-          day_num: Number(dayNum || '1'),
-          training_category: trainingCategory,
-          notes,
-        }),
-      })
-      onUpdated(payload.schedule, payload.message)
-      setIsEditing(false)
-    } catch (requestError) {
-      setError(apiErrorMessage(requestError, '更新課表安排失敗。'))
-    } finally {
-      setIsSaving(false)
-    }
+  function toggleSection(sectionKey: string) {
+    setExpandedSections((current) =>
+      current.includes(sectionKey) ? current.filter((entry) => entry !== sectionKey) : [...current, sectionKey],
+    )
   }
 
   async function handleDelete() {
-    setIsSaving(true)
-    setError(null)
-    try {
-      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/assignments/${assignment.record_id}`, {
-        method: 'DELETE',
-      })
-      onUpdated(payload.schedule, payload.message)
-    } catch (requestError) {
-      setError(apiErrorMessage(requestError, '刪除課表安排失敗。'))
-    } finally {
-      setIsSaving(false)
-    }
+    const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/assignments/${assignment.record_id}`, {
+      method: 'DELETE',
+    })
+    onUpdated(payload.schedule, payload.message)
   }
 
   async function handleSaveContent() {
@@ -316,11 +427,27 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
   return (
     <article className="lab-card p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <button
+          type="button"
+          className="min-w-0 flex-1 text-left"
+          onClick={() => setIsExpanded((value) => !value)}
+        >
           <p className="lab-eyebrow">Assignment</p>
-          <h3 className="mt-3 text-2xl font-bold text-slate-900">{assignment.block_label}</h3>
-          <p className="mt-2 text-sm text-slate-500">{assignment.meta}</p>
-        </div>
+          <div className="mt-3 flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-2xl font-bold text-slate-900">{resolvedBlockName}</h3>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="lab-badge bg-slate-100 text-slate-700">{assignment.week_label}</span>
+                <span className="lab-badge bg-slate-100 text-slate-700">事件：{assignment.event_display_name || '-'}</span>
+                <span className="lab-badge bg-sky-100 text-sky-700">{assignment.category_label}</span>
+                <span className="lab-badge bg-amber-100 text-amber-800">{assignment.block_code || '未設定代號'}</span>
+                <span className="lab-badge bg-slate-100 text-slate-700">{assignment.date_range || '-'}</span>
+              </div>
+              <p className="mt-3 text-sm text-slate-600">板塊：{resolvedBlockLabel}</p>
+            </div>
+            <span className="pt-1 text-lg font-semibold text-slate-400">{isExpanded ? '▾' : '▸'}</span>
+          </div>
+        </button>
         <div className="flex flex-wrap gap-2">
           <span className="lab-badge-primary">課表安排</span>
           <button
@@ -333,211 +460,154 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
           >
             {isEditingContent ? '收起課表內容編輯' : '編輯課表內容'}
           </button>
-          <button
-            type="button"
-            className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
-            onClick={() => {
-              if (!isEditing) resetAssignmentForm()
-              setIsEditing((value) => !value)
-            }}
-          >
-            {isEditing ? '收起編輯' : '編輯安排'}
-          </button>
-          <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setConfirmDelete((value) => !value)}>
-            {confirmDelete ? '收起刪除' : '刪除安排'}
-          </button>
+          <DeleteActionButton
+            label="刪除安排"
+            pendingLabel="刪除中..."
+            confirmMessage="確認要刪除這筆課表安排嗎？這只會刪除這位學員這次安排與對應 snapshot，不會刪到原始板塊模板。"
+            onDelete={handleDelete}
+            onError={(message) => setError(message || null)}
+          />
         </div>
       </div>
 
-      <dl className="mt-5 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
-        <DetailMeta label="賽事 / 事件" value={assignment.event_name} />
-        <DetailMeta label="日期" value={assignment.date_range} />
-        <DetailMeta label="週期目標" value={assignment.cycle_goal} />
-        <DetailMeta label="訓練元素" value={assignment.training_element} />
-      </dl>
+      {isExpanded ? (
+        <>
+          <dl className="mt-5 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+            <DetailMeta label="Week" value={assignment.week_label} />
+            <DetailMeta label="事件" value={assignment.event_display_name} />
+            <DetailMeta label="分類" value={assignment.category_label} />
+            <DetailMeta label="代號" value={assignment.block_code || '未設定'} />
+            <DetailMeta label="日期" value={assignment.date_range} />
+            <DetailMeta label="週期目標" value={assignment.cycle_goal} />
+            <DetailMeta label="訓練元素" value={assignment.training_element} />
+          </dl>
 
-      {(assignment.goal || assignment.description || assignment.coach_notes) ? (
-        <div className="mt-5 space-y-3">
-          {assignment.goal ? <div className="rounded-[1rem] bg-blue-50 px-4 py-4 text-sm leading-7 text-blue-900"><strong>目標：</strong>{assignment.goal}</div> : null}
-          {assignment.description ? <div className="rounded-[1rem] bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-700"><strong>描述：</strong>{assignment.description}</div> : null}
-          {assignment.coach_notes ? <div className="rounded-[1rem] bg-amber-50 px-4 py-4 text-sm leading-7 text-amber-900"><strong>教練備註：</strong>{assignment.coach_notes}</div> : null}
-        </div>
-      ) : null}
+          {(assignment.goal || assignment.description || assignment.coach_notes) ? (
+            <div className="mt-5 space-y-3">
+              {assignment.goal ? <div className="rounded-[1rem] bg-blue-50 px-4 py-4 text-sm leading-7 text-blue-900"><strong>目標：</strong>{assignment.goal}</div> : null}
+              {assignment.description ? <div className="rounded-[1rem] bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-700"><strong>描述：</strong>{assignment.description}</div> : null}
+              {assignment.coach_notes ? <div className="rounded-[1rem] bg-amber-50 px-4 py-4 text-sm leading-7 text-amber-900"><strong>教練備註：</strong>{assignment.coach_notes}</div> : null}
+            </div>
+          ) : null}
 
-      {isEditingContent ? (
-        <div className="mt-6 space-y-6">
-          {editableSections.map((section, sectionIndex) => (
-            <section key={`${assignment.id}-edit-${section.name}-${sectionIndex}`}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h4 className="text-lg font-bold text-slate-900">{section.name}</h4>
-                <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => addExercise(sectionIndex)}>
-                  新增動作
+          {isEditingContent ? (
+            <div className="mt-6 space-y-6">
+              {editableSections.map((section, sectionIndex) => (
+                <section key={`${assignment.id}-edit-${section.name}-${sectionIndex}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h4 className="text-lg font-bold text-slate-900">{section.name}</h4>
+                    <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => addExercise(sectionIndex)}>
+                      新增動作
+                    </button>
+                  </div>
+
+                  {section.rows.length === 0 ? (
+                    <div className="mt-3 rounded-[1rem] border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                      這個區段目前沒有動作，請點「新增動作」加入。
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      {section.rows.map((row) => (
+                        <article key={row.localId} className="rounded-[1rem] border border-slate-200 bg-white p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <h5 className="text-base font-bold text-slate-900">{row.exercise_name || '未命名動作'}</h5>
+                              <p className="mt-1 text-sm text-slate-500">這裡只會修改這一次 assignment 的個人化課表內容。</p>
+                            </div>
+                            <button
+                              type="button"
+                              className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm text-rose-700"
+                              onClick={() => removeExercise(sectionIndex, row.localId)}
+                            >
+                              刪除動作
+                            </button>
+                          </div>
+
+                          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                            <div className="space-y-2 xl:col-span-2">
+                              <label className="text-sm font-semibold text-slate-700">動作名稱</label>
+                              <input className="lab-input" value={row.exercise_name} onChange={(event) => updateExercise(sectionIndex, row.localId, 'exercise_name', event.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-semibold text-slate-700">組數</label>
+                              <input className="lab-input" value={row.sets} onChange={(event) => updateExercise(sectionIndex, row.localId, 'sets', event.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-semibold text-slate-700">次數 / 時間</label>
+                              <input className="lab-input" value={row.reps_or_time} onChange={(event) => updateExercise(sectionIndex, row.localId, 'reps_or_time', event.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-semibold text-slate-700">工具</label>
+                              <input className="lab-input" value={row.equipment} onChange={(event) => updateExercise(sectionIndex, row.localId, 'equipment', event.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-semibold text-slate-700">強度</label>
+                              <input className="lab-input" value={row.intensity} onChange={(event) => updateExercise(sectionIndex, row.localId, 'intensity', event.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-semibold text-slate-700">重量</label>
+                              <input className="lab-input" value={row.weight} onChange={(event) => updateExercise(sectionIndex, row.localId, 'weight', event.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-semibold text-slate-700">休息時間</label>
+                              <input className="lab-input" value={row.rest} onChange={(event) => updateExercise(sectionIndex, row.localId, 'rest', event.target.value)} />
+                            </div>
+                            <div className="space-y-2 xl:col-span-2">
+                              <label className="text-sm font-semibold text-slate-700">影片</label>
+                              <input className="lab-input" value={row.video_url} onChange={(event) => updateExercise(sectionIndex, row.localId, 'video_url', event.target.value)} />
+                            </div>
+                            <div className="space-y-2 xl:col-span-2">
+                              <label className="text-sm font-semibold text-slate-700">備註</label>
+                              <textarea className="lab-input min-h-24" value={row.notes} onChange={(event) => updateExercise(sectionIndex, row.localId, 'notes', event.target.value)} />
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              ))}
+
+              <div className="flex flex-wrap gap-3">
+                <button type="button" className="lab-btn-primary" disabled={isSavingContent} onClick={() => void handleSaveContent()}>
+                  {isSavingContent ? '儲存中...' : '儲存課表內容'}
+                </button>
+                <button type="button" className="lab-btn-secondary" disabled={isSavingContent} onClick={cancelContentEditing}>
+                  取消編輯
                 </button>
               </div>
+            </div>
+          ) : assignment.sections.length > 0 ? (
+            <div className="mt-6 space-y-4">
+              {assignment.sections.map((section, index) => {
+                const sectionKey = `${assignment.id}-${index}-${section.name}`
+                const isExpanded = expandedSections.includes(sectionKey)
 
-              {section.rows.length === 0 ? (
-                <div className="mt-3 rounded-[1rem] border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-                  這個區段目前沒有動作，請點「新增動作」加入。
-                </div>
-              ) : (
-                <div className="mt-3 space-y-3">
-                  {section.rows.map((row) => (
-                    <article key={row.localId} className="rounded-[1rem] border border-slate-200 bg-white p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <h5 className="text-base font-bold text-slate-900">{row.exercise_name || '未命名動作'}</h5>
-                          <p className="mt-1 text-sm text-slate-500">這裡只會修改這一次 assignment 的個人化課表內容。</p>
-                        </div>
-                        <button
-                          type="button"
-                          className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm text-rose-700"
-                          onClick={() => removeExercise(sectionIndex, row.localId)}
-                        >
-                          刪除動作
-                        </button>
-                      </div>
-
-                      <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                        <div className="space-y-2 xl:col-span-2">
-                          <label className="text-sm font-semibold text-slate-700">動作名稱</label>
-                          <input className="lab-input" value={row.exercise_name} onChange={(event) => updateExercise(sectionIndex, row.localId, 'exercise_name', event.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">組數</label>
-                          <input className="lab-input" value={row.sets} onChange={(event) => updateExercise(sectionIndex, row.localId, 'sets', event.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">次數 / 時間</label>
-                          <input className="lab-input" value={row.reps_or_time} onChange={(event) => updateExercise(sectionIndex, row.localId, 'reps_or_time', event.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">工具</label>
-                          <input className="lab-input" value={row.equipment} onChange={(event) => updateExercise(sectionIndex, row.localId, 'equipment', event.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">強度</label>
-                          <input className="lab-input" value={row.intensity} onChange={(event) => updateExercise(sectionIndex, row.localId, 'intensity', event.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">重量</label>
-                          <input className="lab-input" value={row.weight} onChange={(event) => updateExercise(sectionIndex, row.localId, 'weight', event.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">休息時間</label>
-                          <input className="lab-input" value={row.rest} onChange={(event) => updateExercise(sectionIndex, row.localId, 'rest', event.target.value)} />
-                        </div>
-                        <div className="space-y-2 xl:col-span-2">
-                          <label className="text-sm font-semibold text-slate-700">影片</label>
-                          <input className="lab-input" value={row.video_url} onChange={(event) => updateExercise(sectionIndex, row.localId, 'video_url', event.target.value)} />
-                        </div>
-                        <div className="space-y-2 xl:col-span-2">
-                          <label className="text-sm font-semibold text-slate-700">備註</label>
-                          <textarea className="lab-input min-h-24" value={row.notes} onChange={(event) => updateExercise(sectionIndex, row.localId, 'notes', event.target.value)} />
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-          ))}
-
-          <div className="flex flex-wrap gap-3">
-            <button type="button" className="lab-btn-primary" disabled={isSavingContent} onClick={() => void handleSaveContent()}>
-              {isSavingContent ? '儲存中...' : '儲存課表內容'}
-            </button>
-            <button type="button" className="lab-btn-secondary" disabled={isSavingContent} onClick={cancelContentEditing}>
-              取消編輯
-            </button>
-          </div>
-        </div>
-      ) : assignment.sections.length > 0 ? (
-        <div className="mt-6 space-y-6">
-          {assignment.sections.map((section) => (
-            <section key={`${assignment.id}-${section.name}`}>
-              <h4 className="text-lg font-bold text-slate-900">{section.name}</h4>
-              <div className="mt-3 space-y-3">
-                {section.rows.map((row) => (
-                  <article key={`${assignment.id}-${section.name}-${row.id || row.exercise_name}`} className="rounded-[1rem] border border-slate-200 bg-white p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                return (
+                  <section key={sectionKey} className="overflow-hidden rounded-[1.25rem] border border-slate-200 bg-white">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-slate-50"
+                      onClick={() => toggleSection(sectionKey)}
+                    >
                       <div>
-                        <h5 className="text-base font-bold text-slate-900">{row.exercise_name || '未命名動作'}</h5>
-                        <p className="mt-1 text-sm text-slate-500">{[row.sets && `組數 ${row.sets}`, row.reps_or_time && `次數/時間 ${row.reps_or_time}`].filter(Boolean).join(' · ') || '未設定組數/次數'}</p>
+                        <h4 className="text-base font-bold text-slate-900">{section.name}</h4>
+                        <p className="mt-1 text-sm text-slate-500">{section.rows.length} 個動作</p>
                       </div>
-                      {row.video_url ? <a href={row.video_url} target="_blank" rel="noreferrer" className="lab-badge-info">影片連結</a> : null}
-                    </div>
-                    <dl className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-3">
-                      <DetailMeta label="工具" value={row.equipment} />
-                      <DetailMeta label="強度" value={row.intensity} />
-                      <DetailMeta label="重量" value={row.weight} />
-                      <DetailMeta label="實際組數" value={row.actual_sets} />
-                      <DetailMeta label="實際重量" value={row.actual_weight} />
-                      <DetailMeta label="休息" value={row.rest} />
-                      <DetailMeta label="備註" value={row.notes} />
-                    </dl>
-                  </article>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      ) : null}
+                      <span className="text-lg font-semibold text-slate-400">{isExpanded ? '▾' : '▸'}</span>
+                    </button>
 
-      {isEditing ? (
-        <div className="mt-6 rounded-[1.25rem] border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-semibold text-slate-900">編輯安排設定</p>
-          <div className="mt-4 grid gap-4 xl:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">賽事 / 事件</label>
-              <input className="lab-input" value={eventName} onChange={(event) => setEventName(event.target.value)} />
+                    {isExpanded ? (
+                      <div className="border-t border-slate-200 px-4 py-4 sm:px-5">
+                        <ExerciseReadTable rows={section.rows} />
+                      </div>
+                    ) : null}
+                  </section>
+                )
+              })}
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">週期目標</label>
-              <input className="lab-input" value={cycleGoal} onChange={(event) => setCycleGoal(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">開始日期</label>
-              <input type="date" className="lab-input" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">結束日期</label>
-              <input type="date" className="lab-input" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Week</label>
-              <input type="number" min="1" className="lab-input" value={weekNum} onChange={(event) => setWeekNum(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Day</label>
-              <input type="number" min="1" className="lab-input" value={dayNum} onChange={(event) => setDayNum(event.target.value)} />
-            </div>
-            <div className="space-y-2 xl:col-span-2">
-              <label className="text-sm font-semibold text-slate-700">訓練分類</label>
-              <select className="lab-input" value={trainingCategory} onChange={(event) => setTrainingCategory(event.target.value)}>
-                {TRAINING_CATEGORIES.map((option) => <option key={option} value={option}>{option}</option>)}
-              </select>
-            </div>
-            <div className="space-y-2 xl:col-span-2">
-              <label className="text-sm font-semibold text-slate-700">教練備註</label>
-              <textarea className="lab-input min-h-28" value={notes} onChange={(event) => setNotes(event.target.value)} />
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button type="button" className="lab-btn-primary" disabled={isSaving} onClick={() => void handleSave()}>{isSaving ? '儲存中...' : '儲存安排'}</button>
-            <button type="button" className="lab-btn-secondary" onClick={() => setIsEditing(false)}>取消</button>
-          </div>
-        </div>
-      ) : null}
-
-      {confirmDelete ? (
-        <div className="mt-6 rounded-[1.25rem] border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
-          <p className="font-semibold">確認要刪除這筆課表安排嗎？</p>
-          <p className="mt-2">刪除後會一併移除這筆 assignment 的學員動作快照與回報內容。</p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button type="button" className="lab-btn-primary" disabled={isSaving} onClick={() => void handleDelete()}>{isSaving ? '刪除中...' : '確認刪除'}</button>
-            <button type="button" className="lab-btn-secondary" onClick={() => setConfirmDelete(false)}>取消</button>
-          </div>
-        </div>
+          ) : null}
+        </>
       ) : null}
 
       {error ? <p className="mt-5 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
@@ -545,9 +615,104 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
   )
 }
 
+function DailyAssignmentSummaryCard({
+  assignment,
+  onViewDetail,
+  athleteId,
+  onUpdated,
+}: {
+  assignment: AssignmentDetail
+  onViewDetail: (assignmentId: string) => void
+  athleteId: number
+  onUpdated: (schedule: AthleteScheduleBundle, message?: string) => void
+}) {
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleDelete() {
+    const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/assignments/${assignment.record_id}`, {
+      method: 'DELETE',
+    })
+    onUpdated(payload.schedule, payload.message)
+  }
+
+  return (
+    <article className="rounded-[1.25rem] border border-slate-200 bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-base font-semibold text-slate-900">事件：{assignment.event_display_name || '未命名安排'}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="lab-badge bg-slate-100 text-slate-700">Week：{assignment.week_label.replace(/^Week\s*/i, '') || '-'}</span>
+            <span className="lab-badge bg-sky-100 text-sky-700">分類：{assignment.category_label || '未分類'}</span>
+            <span className="lab-badge bg-amber-100 text-amber-800">代號：{assignment.block_code || '無代號'}</span>
+          </div>
+          <p className="mt-3 text-sm text-slate-500">板塊：{blockNameFromLabel(assignment.block_label)}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
+            onClick={() => onViewDetail(assignment.id)}
+          >
+            查看 / 編輯課表內容
+          </button>
+          <DeleteActionButton
+            label="刪除安排"
+            pendingLabel="刪除中..."
+            confirmMessage="確認要刪除這筆課表安排嗎？這只會刪除這位學員這次安排與對應 snapshot，不會刪到原始板塊模板。"
+            onDelete={handleDelete}
+            onError={(message) => setError(message || null)}
+          />
+        </div>
+      </div>
+      {error ? <p className="mt-4 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+    </article>
+  )
+}
+
+function DailyEventSummaryCard({
+  event,
+  athleteId,
+  onUpdated,
+}: {
+  event: GeneralEventDetail
+  athleteId: number
+  onUpdated: (schedule: AthleteScheduleBundle, message?: string) => void
+}) {
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleDelete() {
+    const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/events/${event.record_id}`, {
+      method: 'DELETE',
+    })
+    onUpdated(payload.schedule, payload.message)
+  }
+
+  return (
+    <article className="rounded-[1.25rem] border border-slate-200 bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-bold text-slate-900">{event.event_name}</h3>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="lab-badge-success">{event.event_type || '一般事件'}</span>
+            <span className="lab-badge bg-slate-100 text-slate-700">{event.date_range}</span>
+          </div>
+          {event.description ? <p className="mt-3 text-sm text-slate-600">備註：{event.description}</p> : null}
+        </div>
+        <DeleteActionButton
+          label="刪除事件"
+          pendingLabel="刪除中..."
+          confirmMessage="確認要刪除這筆一般事件嗎？"
+          onDelete={handleDelete}
+          onError={(message) => setError(message || null)}
+        />
+      </div>
+      {error ? <p className="mt-4 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+    </article>
+  )
+}
+
 function EventCard({ event, onUpdated, athleteId }: { event: GeneralEventDetail; athleteId: number; onUpdated: (schedule: AthleteScheduleBundle, message?: string) => void }) {
   const [isEditing, setIsEditing] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [title, setTitle] = useState(event.event_name)
@@ -574,16 +739,8 @@ function EventCard({ event, onUpdated, athleteId }: { event: GeneralEventDetail;
   }
 
   async function handleDelete() {
-    setIsSaving(true)
-    setError(null)
-    try {
-      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/events/${event.record_id}`, { method: 'DELETE' })
-      onUpdated(payload.schedule, payload.message)
-    } catch (requestError) {
-      setError(apiErrorMessage(requestError, '刪除一般事件失敗。'))
-    } finally {
-      setIsSaving(false)
-    }
+    const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/events/${event.record_id}`, { method: 'DELETE' })
+    onUpdated(payload.schedule, payload.message)
   }
 
   return (
@@ -597,7 +754,13 @@ function EventCard({ event, onUpdated, athleteId }: { event: GeneralEventDetail;
         <div className="flex flex-wrap gap-2">
           <span className="lab-badge-success">一般事件</span>
           <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setIsEditing((value) => !value)}>{isEditing ? '收起編輯' : '編輯事件'}</button>
-          <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setConfirmDelete((value) => !value)}>{confirmDelete ? '收起刪除' : '刪除事件'}</button>
+          <DeleteActionButton
+            label="刪除事件"
+            pendingLabel="刪除中..."
+            confirmMessage="確認要刪除這筆一般事件嗎？"
+            onDelete={handleDelete}
+            onError={(message) => setError(message || null)}
+          />
         </div>
       </div>
       <div className="mt-5 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
@@ -640,47 +803,97 @@ function EventCard({ event, onUpdated, athleteId }: { event: GeneralEventDetail;
         </div>
       ) : null}
 
-      {confirmDelete ? (
-        <div className="mt-6 rounded-[1.25rem] border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
-          <p className="font-semibold">確認要刪除這筆一般事件嗎？</p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button type="button" className="lab-btn-primary" disabled={isSaving} onClick={() => void handleDelete()}>{isSaving ? '刪除中...' : '確認刪除'}</button>
-            <button type="button" className="lab-btn-secondary" onClick={() => setConfirmDelete(false)}>取消</button>
-          </div>
-        </div>
-      ) : null}
-
       {error ? <p className="mt-5 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
     </article>
   )
 }
 
-export function CoachScheduleManager({ athleteId, initialSchedule, blocks }: CoachScheduleManagerProps) {
+export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxonomy }: CoachScheduleManagerProps) {
+  const initialDate = todayIso()
+  const initialSportId = getInitialSportId(taxonomy)
+  const initialAgeGroupId = getInitialAgeGroupId(taxonomy, initialSportId)
+  const initialTrainingCategoryId = getInitialTrainingCategoryId(taxonomy, initialAgeGroupId)
+  const initialVisibleBlocks =
+    initialSportId === UNCATEGORIZED_SELECTOR
+      ? blocks.filter((block) => block.training_category_id == null)
+      : blocks.filter((block) => block.training_category_id === initialTrainingCategoryId)
   const [schedule, setSchedule] = useState(initialSchedule)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isCreatingAssignment, setIsCreatingAssignment] = useState(false)
   const [isCreatingEvent, setIsCreatingEvent] = useState(false)
-  const [selectedDate, setSelectedDate] = useState(todayIso())
-  const [visibleMonth, setVisibleMonth] = useState(todayIso().slice(0, 7))
-  const [assignmentForm, setAssignmentForm] = useState<AssignmentFormState>({
-    blockId: String(blocks[0]?.id ?? ''),
-    eventName: '',
-    cycleGoal: '',
-    startDate: todayIso(),
-    endDate: todayIso(),
-    weekNum: '1',
-    dayNum: String(new Date().getDay() || 7),
-    trainingCategory: TRAINING_CATEGORIES[0],
-    notes: '',
-  })
-  const [eventForm, setEventForm] = useState<EventFormState>({
-    title: '',
-    eventType: GENERAL_EVENT_TYPES[0],
-    startDate: todayIso(),
-    endDate: todayIso(),
-    notes: '',
-  })
+  const [isDayModalOpen, setIsDayModalOpen] = useState(false)
+  const detailSectionRef = useRef<HTMLElement | null>(null)
+  const [selectedDate, setSelectedDate] = useState(initialDate)
+  const [visibleMonth, setVisibleMonth] = useState(initialDate.slice(0, 7))
+  const [selectedSportId, setSelectedSportId] = useState<string>(initialSportId)
+  const [selectedAgeGroupId, setSelectedAgeGroupId] = useState<string>(initialAgeGroupId ? String(initialAgeGroupId) : '')
+  const [selectedTrainingCategoryId, setSelectedTrainingCategoryId] = useState<string>(initialTrainingCategoryId ? String(initialTrainingCategoryId) : '')
+  const [blockSearch, setBlockSearch] = useState('')
+  const [assignmentForm, setAssignmentForm] = useState<AssignmentFormState>(() =>
+    ({
+      ...defaultAssignmentForm(initialDate),
+      blockId: String(initialVisibleBlocks[0]?.id ?? ''),
+      trainingCategory:
+        taxonomy.trainingCategories.find((category) => category.id === initialTrainingCategoryId)?.name ??
+        TRAINING_CATEGORIES[0],
+    }),
+  )
+  const [eventForm, setEventForm] = useState<EventFormState>(() => defaultEventForm(initialDate))
+
+  const isUncategorizedSelection = selectedSportId === UNCATEGORIZED_SELECTOR
+
+  const availableAgeGroups = useMemo(
+    () =>
+      isUncategorizedSelection
+        ? []
+        : taxonomy.ageGroups.filter((ageGroup) => String(ageGroup.sport_id) === selectedSportId),
+    [isUncategorizedSelection, selectedSportId, taxonomy.ageGroups],
+  )
+
+  const effectiveSelectedAgeGroupId = useMemo(() => {
+    if (isUncategorizedSelection) return ''
+    if (availableAgeGroups.some((ageGroup) => String(ageGroup.id) === selectedAgeGroupId)) return selectedAgeGroupId
+    return availableAgeGroups[0] ? String(availableAgeGroups[0].id) : ''
+  }, [availableAgeGroups, isUncategorizedSelection, selectedAgeGroupId])
+
+  const availableTrainingCategories = useMemo(
+    () =>
+      effectiveSelectedAgeGroupId
+        ? taxonomy.trainingCategories.filter((category) => String(category.age_group_id) === effectiveSelectedAgeGroupId)
+        : [],
+    [effectiveSelectedAgeGroupId, taxonomy.trainingCategories],
+  )
+
+  const effectiveSelectedTrainingCategoryId = useMemo(() => {
+    if (availableTrainingCategories.some((category) => String(category.id) === selectedTrainingCategoryId)) return selectedTrainingCategoryId
+    return availableTrainingCategories[0] ? String(availableTrainingCategories[0].id) : ''
+  }, [availableTrainingCategories, selectedTrainingCategoryId])
+
+  const filteredBlocksByCategory = useMemo(() => {
+    if (isUncategorizedSelection) {
+      return blocks.filter((block) => block.training_category_id == null)
+    }
+
+    if (!effectiveSelectedTrainingCategoryId) return []
+    return blocks.filter((block) => String(block.training_category_id ?? '') === effectiveSelectedTrainingCategoryId)
+  }, [blocks, effectiveSelectedTrainingCategoryId, isUncategorizedSelection])
+
+  const visibleBlocks = useMemo(() => {
+    const keyword = blockSearch.trim().toLocaleLowerCase('en-US')
+    if (!keyword) return filteredBlocksByCategory
+
+    return filteredBlocksByCategory.filter((block) =>
+      [block.block_code, block.block_name, block.training_element, block.goal]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase('en-US').includes(keyword)),
+    )
+  }, [blockSearch, filteredBlocksByCategory])
+
+  const effectiveBlockId = useMemo(() => {
+    if (visibleBlocks.some((block) => String(block.id) === assignmentForm.blockId)) return assignmentForm.blockId
+    return visibleBlocks[0] ? String(visibleBlocks[0].id) : ''
+  }, [assignmentForm.blockId, visibleBlocks])
 
   const calendarItems = useMemo<ScheduleItem[]>(() => {
     const assignments = schedule.assignments.map((assignment) => ({
@@ -689,8 +902,10 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks }: Coa
       recordId: assignment.record_id,
       startDate: assignment.start_date || assignment.date_range.split(' ~ ')[0] || todayIso(),
       endDate: assignment.end_date || assignment.start_date || assignment.date_range.split(' ~ ').slice(-1)[0] || todayIso(),
-      title: assignment.block_label,
+      title: assignment.event_display_name,
       meta: assignment.meta,
+      previewTop: `${compactWeekLabel(assignment.week_label)}・${truncateText(assignment.event_display_name || '未命名安排', 8)}`,
+      previewBottom: `${truncateText(assignment.category_label || '未分類', 6)}・${truncateText(assignment.block_code || '無代號', 10)}`,
     }))
     const events = schedule.generalEvents.map((event) => ({
       kind: 'event' as const,
@@ -700,6 +915,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks }: Coa
       endDate: event.end_date || event.start_date || todayIso(),
       title: event.event_name,
       meta: event.meta,
+      previewTop: truncateText(event.event_name, 14),
     }))
     return [...assignments, ...events].sort((left, right) => {
       if (left.startDate !== right.startDate) return left.startDate.localeCompare(right.startDate)
@@ -746,37 +962,77 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks }: Coa
     return cells
   }, [calendarItems, visibleMonth])
 
+  useEffect(() => {
+    if (!isDayModalOpen) return
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsDayModalOpen(false)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isDayModalOpen])
+
   function applySchedule(nextSchedule: AthleteScheduleBundle, nextMessage?: string) {
     setSchedule(nextSchedule)
     setMessage(nextMessage ?? null)
     setError(null)
   }
 
-  function selectDate(date: string) {
+  function selectDate(date: string, shouldOpenModal: boolean) {
     setSelectedDate(date)
-    setAssignmentForm((current) => ({ ...current, startDate: date, endDate: date, dayNum: String(new Date(`${date}T00:00:00`).getDay() || 7) }))
+    setAssignmentForm((current) => ({ ...current, startDate: date, endDate: date, dayNum: weekdayFromIso(date) }))
     setEventForm((current) => ({ ...current, startDate: date, endDate: date }))
+    setIsDayModalOpen(shouldOpenModal)
+  }
+
+  function jumpToDetail(assignmentId: string) {
+    setIsDayModalOpen(false)
+    window.requestAnimationFrame(() => {
+      detailSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const target = document.getElementById(`assignment-detail-${assignmentId}`)
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
   }
 
   async function handleCreateAssignment() {
     setIsCreatingAssignment(true)
     setError(null)
     try {
+      const selectedCategoryName =
+        availableTrainingCategories.find((category) => String(category.id) === effectiveSelectedTrainingCategoryId)?.name ??
+        (isUncategorizedSelection ? '未分類' : assignmentForm.trainingCategory)
+
       const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/assignments`, {
         method: 'POST',
         body: JSON.stringify({
-          block_id: Number(assignmentForm.blockId),
+          block_id: Number(effectiveBlockId),
           event_name: assignmentForm.eventName,
           cycle_goal: assignmentForm.cycleGoal,
           start_date: assignmentForm.startDate,
           end_date: assignmentForm.endDate,
           week_num: Number(assignmentForm.weekNum || '1'),
           day_num: Number(assignmentForm.dayNum || '1'),
-          training_category: assignmentForm.trainingCategory,
+          training_category: selectedCategoryName,
           notes: assignmentForm.notes,
         }),
       })
       applySchedule(payload.schedule, payload.message)
+      setSelectedDate(assignmentForm.startDate)
+      setVisibleMonth(assignmentForm.startDate.slice(0, 7))
+      setAssignmentForm((current) => ({
+        ...defaultAssignmentForm(assignmentForm.startDate, current),
+        blockId: effectiveBlockId || String(visibleBlocks[0]?.id ?? ''),
+        trainingCategory: selectedCategoryName,
+      }))
     } catch (requestError) {
       setError(apiErrorMessage(requestError, '新增課表安排失敗。'))
     } finally {
@@ -799,6 +1055,9 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks }: Coa
         }),
       })
       applySchedule(payload.schedule, payload.message)
+      setSelectedDate(eventForm.startDate)
+      setVisibleMonth(eventForm.startDate.slice(0, 7))
+      setEventForm((current) => defaultEventForm(eventForm.startDate, current))
     } catch (requestError) {
       setError(apiErrorMessage(requestError, '新增一般事件失敗。'))
     } finally {
@@ -813,7 +1072,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks }: Coa
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="lab-section-title">課表行事曆</h2>
-            <p className="lab-copy mt-3">先用月曆挑一天，再安排課表或新增一般事件。這一階段先完成月份瀏覽、選日預填、建立 / 編輯 / 刪除安排。</p>
+            <p className="lab-copy mt-3">先用月曆挑一天，再安排課表或新增一般事件。這裡可建立 / 刪除安排，並直接編輯這次 assignment 的課表內容。</p>
           </div>
           <span className="lab-badge-primary">已選日期：{selectedDate}</span>
         </div>
@@ -853,7 +1112,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks }: Coa
                     <button
                       key={cell.date}
                       type="button"
-                      onClick={() => selectDate(cell.date)}
+                      onClick={() => selectDate(cell.date, cell.items.length > 2)}
                       className={`relative flex min-h-[132px] w-full min-w-0 flex-col bg-white p-3 text-left transition hover:z-10 hover:bg-slate-50 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 ${isSelected ? 'z-10 bg-orange-50 ring-2 ring-inset ring-orange-400' : ''} ${cell.inCurrentMonth ? 'text-slate-900' : 'text-slate-300'}`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -872,14 +1131,15 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks }: Coa
                         {previewItems.map((item) => (
                           <div
                             key={`${cell.date}-${item.kind}-${item.id}`}
-                            className={`truncate rounded-full px-2.5 py-1 text-[11px] font-medium ${item.kind === 'assignment' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'} ${cell.inCurrentMonth ? '' : 'opacity-70'}`}
-                            title={item.title}
+                            className={`rounded-xl px-2.5 py-1.5 text-[11px] font-medium leading-4 ${item.kind === 'assignment' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'} ${cell.inCurrentMonth ? '' : 'opacity-70'}`}
+                            title={`${item.title}｜${item.meta}`}
                           >
-                            {item.title}
+                            <div className="truncate">{item.previewTop}</div>
+                            {item.previewBottom ? <div className="mt-0.5 truncate">{item.previewBottom}</div> : null}
                           </div>
                         ))}
                         {cell.items.length > 2 ? (
-                          <div className="text-[11px] font-semibold text-slate-500">+{cell.items.length - 2} 筆安排</div>
+                          <div className="text-[11px] font-semibold text-slate-500">+{cell.items.length - 2} 筆</div>
                         ) : null}
                         {cell.items.length === 0 ? <div className="pt-4 text-[11px] text-slate-300">&nbsp;</div> : null}
                       </div>
@@ -897,10 +1157,96 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks }: Coa
           <p className="lab-eyebrow">Add Assignment</p>
           <h3 className="mt-3 text-2xl font-bold text-slate-900">加入板塊</h3>
           <div className="mt-5 grid gap-4">
+            <div className="grid gap-4 xl:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">專項 / 類型</label>
+                <select
+                  className="lab-input"
+                  value={selectedSportId}
+                  onChange={(event) => {
+                    const nextSportId = event.target.value
+                    setSelectedSportId(nextSportId)
+                    if (nextSportId === UNCATEGORIZED_SELECTOR) {
+                      setSelectedAgeGroupId('')
+                      setSelectedTrainingCategoryId('')
+                    } else {
+                      const nextAgeGroupId = taxonomy.ageGroups.find((ageGroup) => String(ageGroup.sport_id) === nextSportId)?.id
+                      const nextTrainingCategoryId = nextAgeGroupId
+                        ? taxonomy.trainingCategories.find((category) => category.age_group_id === nextAgeGroupId)?.id
+                        : undefined
+                      setSelectedAgeGroupId(nextAgeGroupId ? String(nextAgeGroupId) : '')
+                      setSelectedTrainingCategoryId(nextTrainingCategoryId ? String(nextTrainingCategoryId) : '')
+                    }
+                    setBlockSearch('')
+                  }}
+                >
+                  {taxonomy.sports.map((sport) => (
+                    <option key={sport.id} value={sport.id}>{sport.name}</option>
+                  ))}
+                  <option value={UNCATEGORIZED_SELECTOR}>未分類</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">年齡分級</label>
+                <select
+                  className="lab-input"
+                  value={effectiveSelectedAgeGroupId}
+                  disabled={isUncategorizedSelection || availableAgeGroups.length === 0}
+                  onChange={(event) => {
+                    const nextAgeGroupId = event.target.value
+                    setSelectedAgeGroupId(nextAgeGroupId)
+                    const nextTrainingCategoryId = taxonomy.trainingCategories.find((category) => String(category.age_group_id) === nextAgeGroupId)?.id
+                    setSelectedTrainingCategoryId(nextTrainingCategoryId ? String(nextTrainingCategoryId) : '')
+                    setBlockSearch('')
+                  }}
+                >
+                  {availableAgeGroups.length === 0 ? <option value="">{isUncategorizedSelection ? '未分類板塊不需選擇年齡' : '請先選擇專項'}</option> : null}
+                  {availableAgeGroups.map((ageGroup) => (
+                    <option key={ageGroup.id} value={ageGroup.id}>{ageGroup.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">訓練分類</label>
+                <select
+                  className="lab-input"
+                  value={effectiveSelectedTrainingCategoryId}
+                  disabled={isUncategorizedSelection || availableTrainingCategories.length === 0}
+                  onChange={(event) => {
+                    setSelectedTrainingCategoryId(event.target.value)
+                    setBlockSearch('')
+                  }}
+                >
+                  {availableTrainingCategories.length === 0 ? <option value="">{isUncategorizedSelection ? '未分類板塊不需選擇分類' : '請先選擇年齡分級'}</option> : null}
+                  {availableTrainingCategories.map((category) => (
+                    <option key={category.id} value={category.id}>{category.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">搜尋板塊</label>
+                <input
+                  className="lab-input"
+                  value={blockSearch}
+                  onChange={(event) => setBlockSearch(event.target.value)}
+                  placeholder="搜尋代號、名稱、訓練元素、週期目標"
+                />
+              </div>
+            </div>
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700">選擇板塊</label>
-              <select className="lab-input" value={assignmentForm.blockId} onChange={(event) => setAssignmentForm((current) => ({ ...current, blockId: event.target.value }))}>
-                {blocks.map((block) => <option key={block.id} value={block.id}>{block.block_code && block.block_name ? `${block.block_code} | ${block.block_name}` : block.block_name || block.block_code || `Block ${block.id}`}</option>)}
+              <select
+                className="lab-input"
+                value={effectiveBlockId}
+                onChange={(event) => setAssignmentForm((current) => ({ ...current, blockId: event.target.value }))}
+                disabled={visibleBlocks.length === 0}
+              >
+                {visibleBlocks.length === 0 ? <option value="">{isUncategorizedSelection ? '這個未分類條件下沒有板塊' : '目前分類下沒有板塊'}</option> : null}
+                {visibleBlocks.map((block) => (
+                  <option key={block.id} value={block.id}>
+                    {block.block_code && block.block_name ? `${block.block_code} | ${block.block_name}` : block.block_name || block.block_code || `Block ${block.id}`}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="space-y-2">
@@ -915,13 +1261,12 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks }: Coa
               <div className="space-y-2"><label className="text-sm font-semibold text-slate-700">開始日期</label><input type="date" className="lab-input" value={assignmentForm.startDate} onChange={(event) => setAssignmentForm((current) => ({ ...current, startDate: event.target.value }))} /></div>
               <div className="space-y-2"><label className="text-sm font-semibold text-slate-700">結束日期</label><input type="date" className="lab-input" value={assignmentForm.endDate} onChange={(event) => setAssignmentForm((current) => ({ ...current, endDate: event.target.value }))} /></div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2"><label className="text-sm font-semibold text-slate-700">Week</label><input type="number" min="1" className="lab-input" value={assignmentForm.weekNum} onChange={(event) => setAssignmentForm((current) => ({ ...current, weekNum: event.target.value }))} /></div>
               <div className="space-y-2"><label className="text-sm font-semibold text-slate-700">Day</label><input type="number" min="1" className="lab-input" value={assignmentForm.dayNum} onChange={(event) => setAssignmentForm((current) => ({ ...current, dayNum: event.target.value }))} /></div>
-              <div className="space-y-2 xl:col-span-1 sm:col-span-2"><label className="text-sm font-semibold text-slate-700">訓練分類</label><select className="lab-input" value={assignmentForm.trainingCategory} onChange={(event) => setAssignmentForm((current) => ({ ...current, trainingCategory: event.target.value }))}>{TRAINING_CATEGORIES.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
             </div>
             <div className="space-y-2"><label className="text-sm font-semibold text-slate-700">教練備註</label><textarea className="lab-input min-h-24" value={assignmentForm.notes} onChange={(event) => setAssignmentForm((current) => ({ ...current, notes: event.target.value }))} /></div>
-            <button type="button" className="lab-btn-primary w-full sm:w-auto" disabled={isCreatingAssignment || blocks.length === 0} onClick={() => void handleCreateAssignment()}>{isCreatingAssignment ? '建立中...' : '加入到這位學員課表'}</button>
+            <button type="button" className="lab-btn-primary w-full sm:w-auto" disabled={isCreatingAssignment || visibleBlocks.length === 0 || !assignmentForm.blockId} onClick={() => void handleCreateAssignment()}>{isCreatingAssignment ? '建立中...' : '加入到這位學員課表'}</button>
           </div>
         </article>
 
@@ -944,12 +1289,58 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks }: Coa
       {error ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
       {message ? <p className="rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</p> : null}
 
-      <section>
+      {isDayModalOpen ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6"
+          onClick={() => setIsDayModalOpen(false)}
+        >
+          <div
+            className="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-[2rem] border border-slate-200 bg-[#fefcf7] shadow-[0_30px_80px_rgba(15,23,42,0.22)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 bg-white/80 px-6 py-5 backdrop-blur sm:px-7">
+              <div>
+                <p className="lab-eyebrow">Daily Schedule</p>
+                <h2 className="lab-section-title mt-2">{selectedDate}</h2>
+                <p className="lab-copy mt-3">這一天的板塊安排與一般事件都會完整列在這裡。</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="lab-badge-primary">課表 {selectedDateAssignments.length}</span>
+                <span className="lab-badge-success">事件 {selectedDateEvents.length}</span>
+                <button
+                  type="button"
+                  className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
+                  onClick={() => setIsDayModalOpen(false)}
+                >
+                  關閉
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[75vh] overflow-y-auto overscroll-contain px-6 py-6 sm:px-7">
+              {selectedDateAssignments.length === 0 && selectedDateEvents.length === 0 ? (
+                <div className="lab-card-muted px-5 py-6 text-sm text-slate-600">當日沒有安排。</div>
+              ) : (
+                <div className="space-y-4">
+                  {selectedDateAssignments.map((assignment) => (
+                    <DailyAssignmentSummaryCard key={assignment.id} assignment={assignment} athleteId={athleteId} onUpdated={applySchedule} onViewDetail={jumpToDetail} />
+                  ))}
+                  {selectedDateEvents.map((event) => (
+                    <DailyEventSummaryCard key={event.id} event={event} athleteId={athleteId} onUpdated={applySchedule} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <section ref={detailSectionRef}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="lab-eyebrow">Selected Day</p>
             <h2 className="lab-section-title mt-2">{selectedDate}</h2>
-            <p className="lab-copy mt-3">下方只顯示覆蓋到這一天的課表安排與一般事件。</p>
+            <p className="lab-copy mt-3">下方顯示這一天的完整課表安排與一般事件；課表內容編輯也在這裡進行。</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <span className="lab-badge-primary">課表 {selectedDateAssignments.length}</span>
@@ -962,7 +1353,9 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks }: Coa
         ) : (
           <div className="space-y-4">
             {selectedDateAssignments.map((assignment) => (
-              <AssignmentCard key={assignment.id} assignment={assignment} athleteId={athleteId} onUpdated={applySchedule} />
+              <div key={assignment.id} id={`assignment-detail-${assignment.id}`}>
+                <AssignmentCard assignment={assignment} athleteId={athleteId} onUpdated={applySchedule} />
+              </div>
             ))}
             {selectedDateEvents.map((event) => (
               <EventCard key={event.id} event={event} athleteId={athleteId} onUpdated={applySchedule} />

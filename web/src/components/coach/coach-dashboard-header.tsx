@@ -64,7 +64,7 @@ export function CoachDashboardHeader({ roleLabel, athleteCount, userEmail, coach
           </div>
 
           {createAthleteSlot ? (
-            <div className="flex justify-end">
+            <div className="w-full">
               {createAthleteSlot}
             </div>
           ) : null}

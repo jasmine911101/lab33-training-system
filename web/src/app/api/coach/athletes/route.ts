@@ -19,7 +19,10 @@ export async function POST(request: Request) {
     email: String(body.email ?? ''),
     sport: String(body.sport ?? ''),
     level: String(body.level ?? ''),
-    assignedCoachIds: Array.isArray(body.assignedCoachIds) ? body.assignedCoachIds.map(Number) : [],
+    assignedCoachId:
+      body.assignedCoachId === null || body.assignedCoachId === undefined || body.assignedCoachId === ''
+        ? null
+        : Number(body.assignedCoachId),
   })
 
   if (result.error || !result.data) {

@@ -16,6 +16,7 @@ type CoachAthleteManagerProps = {
   roleLabel: string
   userEmail?: string | null
   coachName?: string | null
+  currentCoachId: number
   initialAthletes: ManagedAthleteRecord[]
   assignableCoaches: CoachDirectoryEntry[]
   isHeadCoach: boolean
@@ -25,18 +26,19 @@ type ApiSuccess<T> = T & {
   message?: string
 }
 
-type FilterValue = 'all' | 'unassigned' | `coach:${number}`
+type FilterValue = 'all' | 'mine' | 'unassigned' | `coach:${number}`
 
 type AssignmentDialogState = {
   athlete: ManagedAthleteRecord
-  selectedCoachIds: number[]
+  selectedCoachId: number | null
 }
 
-function buildFilterOptions(assignableCoaches: CoachDirectoryEntry[]) {
+function buildFilterOptions(assignableCoaches: CoachDirectoryEntry[], isHeadCoach: boolean) {
   const sorted = [...assignableCoaches].sort((left, right) => coachDisplayName(left).localeCompare(coachDisplayName(right), 'zh-Hant'))
 
   return [
     { value: 'all' as const, label: '全部' },
+    ...(isHeadCoach ? [{ value: 'mine' as const, label: '只看自己管理學員' }] : []),
     { value: 'unassigned' as const, label: '未指派' },
     ...sorted.map((coach) => ({ value: `coach:${coach.id}` as const, label: coachDisplayName(coach) })),
   ]
@@ -71,8 +73,8 @@ function CreateAthleteSection({
   setCreateEmail,
   createSport,
   setCreateSport,
-  selectedCreateCoachIds,
-  toggleCreateCoach,
+  selectedCreateCoachId,
+  setSelectedCreateCoachId,
   handleCreateAthlete,
   createError,
   createSuccess,
@@ -89,8 +91,8 @@ function CreateAthleteSection({
   setCreateEmail: React.Dispatch<React.SetStateAction<string>>
   createSport: string
   setCreateSport: React.Dispatch<React.SetStateAction<string>>
-  selectedCreateCoachIds: number[]
-  toggleCreateCoach: (coachId: number) => void
+  selectedCreateCoachId: number | null
+  setSelectedCreateCoachId: React.Dispatch<React.SetStateAction<number | null>>
   handleCreateAthlete: (event: React.FormEvent<HTMLFormElement>) => Promise<void>
   createError: string | null
   createSuccess: string | null
@@ -98,7 +100,7 @@ function CreateAthleteSection({
   isCreating: boolean
 }) {
   return (
-    <div className="w-full xl:max-w-[30rem]">
+    <div className="w-full">
       <div className="flex justify-end">
         <button
           type="button"
@@ -111,9 +113,9 @@ function CreateAthleteSection({
       </div>
 
       {isCreateOpen ? (
-        <div className="mt-4 rounded-[1.25rem] border border-slate-200 bg-white p-5 shadow-[0_16px_32px_rgba(15,23,42,0.08)] sm:p-6">
+        <div className="mt-4 w-full rounded-[1.25rem] border border-slate-200 bg-white p-5 shadow-[0_16px_32px_rgba(15,23,42,0.08)] sm:p-6 lg:p-7">
           <form className="grid gap-4" onSubmit={(event) => void handleCreateAthlete(event)}>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 lg:grid-cols-3">
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700" htmlFor="athlete-name">姓名</label>
                 <input id="athlete-name" className="lab-input" value={createName} onChange={(event) => setCreateName(event.target.value)} />
@@ -131,15 +133,30 @@ function CreateAthleteSection({
             {isHeadCoach ? (
               <div className="space-y-3">
                 <p className="text-sm font-semibold text-slate-700">建立後直接指派給教練</p>
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <label className="flex min-h-[4.25rem] cursor-pointer items-start gap-3 rounded-[1rem] border border-slate-200 px-4 py-3 text-sm text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
+                    <input
+                      type="radio"
+                      name="create-athlete-coach"
+                      checked={selectedCreateCoachId === null}
+                      onChange={() => setSelectedCreateCoachId(null)}
+                      className="mt-1"
+                    />
+                    <span className="space-y-1">
+                      <span className="block font-semibold text-slate-900">先不指派</span>
+                      <span className="block text-xs leading-6 text-slate-500">建立後保持未指派，之後再轉給特定教練。</span>
+                    </span>
+                  </label>
                   {assignableCoaches.map((coach) => (
-                    <label key={coach.id} className="flex items-center gap-3 rounded-[1rem] border border-slate-200 px-4 py-3 text-sm text-slate-700">
+                    <label key={coach.id} className="flex min-h-[4.25rem] cursor-pointer items-start gap-3 rounded-[1rem] border border-slate-200 px-4 py-3 text-sm text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
                       <input
-                        type="checkbox"
-                        checked={selectedCreateCoachIds.includes(coach.id)}
-                        onChange={() => toggleCreateCoach(coach.id)}
+                        type="radio"
+                        name="create-athlete-coach"
+                        checked={selectedCreateCoachId === coach.id}
+                        onChange={() => setSelectedCreateCoachId(coach.id)}
+                        className="mt-1"
                       />
-                      <span>{coachDisplayName(coach)}</span>
+                      <span className="block leading-6">{coachDisplayName(coach)}</span>
                     </label>
                   ))}
                 </div>
@@ -174,7 +191,7 @@ function AssignmentDialog({
   isSaving,
   error,
   onClose,
-  onToggleCoach,
+  onSelectCoach,
   onSave,
 }: {
   state: AssignmentDialogState
@@ -182,7 +199,7 @@ function AssignmentDialog({
   isSaving: boolean
   error: string | null
   onClose: () => void
-  onToggleCoach: (coachId: number) => void
+  onSelectCoach: (coachId: number | null) => void
   onSave: () => void
 }) {
   return (
@@ -202,17 +219,32 @@ function AssignmentDialog({
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <label className="flex min-h-[4.25rem] cursor-pointer items-start gap-3 rounded-[1rem] border border-slate-200 px-4 py-3 text-sm text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
+            <input
+              type="radio"
+              name="assignment-coach"
+              checked={state.selectedCoachId === null}
+              onChange={() => onSelectCoach(null)}
+              className="mt-1"
+            />
+            <span className="space-y-1">
+              <span className="block font-semibold text-slate-900">未指派</span>
+              <span className="block text-xs leading-6 text-slate-500">移除目前負責教練，但保留學員既有課表與回報資料。</span>
+            </span>
+          </label>
           {assignableCoaches.length === 0 ? (
             <p className="text-sm text-slate-500">目前沒有可指派的一般教練。</p>
           ) : (
             assignableCoaches.map((coach) => (
-              <label key={coach.id} className="flex items-center gap-3 rounded-[1rem] border border-slate-200 px-4 py-3 text-sm text-slate-700">
+              <label key={coach.id} className="flex min-h-[4.25rem] cursor-pointer items-start gap-3 rounded-[1rem] border border-slate-200 px-4 py-3 text-sm text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
                 <input
-                  type="checkbox"
-                  checked={state.selectedCoachIds.includes(coach.id)}
-                  onChange={() => onToggleCoach(coach.id)}
+                  type="radio"
+                  name="assignment-coach"
+                  checked={state.selectedCoachId === coach.id}
+                  onChange={() => onSelectCoach(coach.id)}
+                  className="mt-1"
                 />
-                <span>{coachDisplayName(coach)}</span>
+                <span className="block leading-6">{coachDisplayName(coach)}</span>
               </label>
             ))
           )}
@@ -382,6 +414,7 @@ function ActionDropdown({
 function ManagedAthletesSection({
   athletes,
   isHeadCoach,
+  currentCoachId,
   search,
   setSearch,
   filter,
@@ -398,6 +431,7 @@ function ManagedAthletesSection({
 }: {
   athletes: ManagedAthleteRecord[]
   isHeadCoach: boolean
+  currentCoachId: number
   search: string
   setSearch: React.Dispatch<React.SetStateAction<string>>
   filter: FilterValue
@@ -415,7 +449,9 @@ function ManagedAthletesSection({
   const filteredAthletes = useMemo(() => {
     let rows = rankAthletesBySearch(athletes, search)
 
-    if (filter === 'unassigned') {
+    if (filter === 'mine') {
+      rows = rows.filter((athlete) => athlete.assignedCoachIds.includes(currentCoachId))
+    } else if (filter === 'unassigned') {
       rows = rows.filter((athlete) => athlete.assignedCoachIds.length === 0)
     } else if (filter.startsWith('coach:')) {
       const coachId = Number(filter.split(':')[1])
@@ -423,7 +459,7 @@ function ManagedAthletesSection({
     }
 
     return rows
-  }, [athletes, filter, search])
+  }, [athletes, currentCoachId, filter, search])
 
   return (
     <article className="lab-card p-6 sm:p-7">
@@ -524,12 +560,20 @@ function ManagedAthletesSection({
                   </div>
 
                   <div className="mt-4 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">指派教練</span>
+                      <p className="mt-2 truncate text-sm text-slate-600">
+                        {athlete.assignedCoachLabels.length > 0 ? athlete.assignedCoachLabels.join(', ') : '未指派'}
+                      </p>
+                    </div>
                     <span className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">狀態</span>
-                    {athlete.must_change_password ? (
-                      <span className="lab-badge-warning">需要更新密碼</span>
-                    ) : (
-                      <span className="lab-badge-success">正常</span>
-                    )}
+                    <div>
+                      {athlete.must_change_password ? (
+                        <span className="lab-badge-warning">需要更新密碼</span>
+                      ) : (
+                        <span className="lab-badge-success">正常</span>
+                      )}
+                    </div>
                   </div>
                 </article>
               )
@@ -541,10 +585,11 @@ function ManagedAthletesSection({
               <div className="overflow-x-auto">
                 <table className="w-full table-fixed border-collapse">
                   <colgroup>
+                    <col className="w-[22%]" />
                     <col className="w-[26%]" />
-                    <col className="w-[32%]" />
-                    <col className="w-[18%]" />
                     <col className="w-[14%]" />
+                    <col className="w-[18%]" />
+                    <col className="w-[10%]" />
                     <col className="w-[10%]" />
                   </colgroup>
                   <thead className="bg-slate-50">
@@ -552,6 +597,7 @@ function ManagedAthletesSection({
                       <th className="border-b border-slate-200 px-6 py-4">學員姓名</th>
                       <th className="border-b border-slate-200 px-6 py-4">Email</th>
                       <th className="border-b border-slate-200 px-6 py-4">運動項目</th>
+                      <th className="border-b border-slate-200 px-6 py-4">指派教練</th>
                       <th className="border-b border-slate-200 px-6 py-4">狀態</th>
                       <th className="border-b border-slate-200 px-6 py-4 text-right">操作</th>
                     </tr>
@@ -576,6 +622,11 @@ function ManagedAthletesSection({
                           </td>
                           <td className="border-b border-slate-100 px-6 py-4 text-sm font-medium text-slate-700 last:border-b-0">
                             <div className="truncate">{athlete.sport ?? '-'}</div>
+                          </td>
+                          <td className="border-b border-slate-100 px-6 py-4 text-sm text-slate-600 last:border-b-0">
+                            <div className="truncate">
+                              {athlete.assignedCoachLabels.length > 0 ? athlete.assignedCoachLabels.join(', ') : '未指派'}
+                            </div>
                           </td>
                           <td className="border-b border-slate-100 px-6 py-4 last:border-b-0">
                             {athlete.must_change_password ? (
@@ -620,7 +671,7 @@ function ManagedAthletesSection({
   )
 }
 
-export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAthletes, assignableCoaches, isHeadCoach }: CoachAthleteManagerProps) {
+export function CoachAthleteManager({ roleLabel, userEmail, coachName, currentCoachId, initialAthletes, assignableCoaches, isHeadCoach }: CoachAthleteManagerProps) {
   const [athletes, setAthletes] = useState(initialAthletes)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterValue>('all')
@@ -628,7 +679,7 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
   const [createName, setCreateName] = useState('')
   const [createEmail, setCreateEmail] = useState('')
   const [createSport, setCreateSport] = useState('')
-  const [selectedCreateCoachIds, setSelectedCreateCoachIds] = useState<number[]>([])
+  const [selectedCreateCoachId, setSelectedCreateCoachId] = useState<number | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
@@ -641,7 +692,7 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
   const [assignmentSaving, setAssignmentSaving] = useState(false)
   const [assignmentError, setAssignmentError] = useState<string | null>(null)
 
-  const filterOptions = useMemo(() => buildFilterOptions(assignableCoaches), [assignableCoaches])
+  const filterOptions = useMemo(() => buildFilterOptions(assignableCoaches, isHeadCoach), [assignableCoaches, isHeadCoach])
 
   async function handleCreateAthlete(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -657,7 +708,7 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
           name: createName,
           email: createEmail,
           sport: createSport,
-          assignedCoachIds: selectedCreateCoachIds,
+          assignedCoachId: selectedCreateCoachId,
         }),
       })
 
@@ -679,7 +730,7 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
       setCreateName('')
       setCreateEmail('')
       setCreateSport('')
-      setSelectedCreateCoachIds([])
+      setSelectedCreateCoachId(null)
     } catch (requestError) {
       setCreateError(requestError instanceof Error ? requestError.message : '新增學員失敗。')
     } finally {
@@ -687,28 +738,20 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
     }
   }
 
-  function toggleCreateCoach(coachId: number) {
-    setSelectedCreateCoachIds((current) =>
-      current.includes(coachId) ? current.filter((value) => value !== coachId) : [...current, coachId],
-    )
-  }
-
   function openAssignCoachDialog(athlete: ManagedAthleteRecord) {
     setAssignmentError(null)
     setAssignmentDialog({
       athlete,
-      selectedCoachIds: athlete.assignedCoachIds,
+      selectedCoachId: athlete.assignedCoachIds[0] ?? null,
     })
   }
 
-  function toggleAssignmentCoach(coachId: number) {
+  function selectAssignmentCoach(coachId: number | null) {
     setAssignmentDialog((current) => {
       if (!current) return current
       return {
         ...current,
-        selectedCoachIds: current.selectedCoachIds.includes(coachId)
-          ? current.selectedCoachIds.filter((value) => value !== coachId)
-          : [...current.selectedCoachIds, coachId],
+        selectedCoachId: coachId,
       }
     })
   }
@@ -722,7 +765,7 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
     try {
       const payload = await requestJson<{ athlete: ManagedAthleteRecord }>(`/api/coach/athletes/${assignmentDialog.athlete.id}/assignment`, {
         method: 'PUT',
-        body: JSON.stringify({ coachIds: assignmentDialog.selectedCoachIds }),
+        body: JSON.stringify({ coachId: assignmentDialog.selectedCoachId }),
       })
 
       setAthletes((current) => current.map((athlete) => (athlete.id === payload.athlete.id ? payload.athlete : athlete)))
@@ -794,8 +837,8 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
             setCreateEmail={setCreateEmail}
             createSport={createSport}
             setCreateSport={setCreateSport}
-            selectedCreateCoachIds={selectedCreateCoachIds}
-            toggleCreateCoach={toggleCreateCoach}
+            selectedCreateCoachId={selectedCreateCoachId}
+            setSelectedCreateCoachId={setSelectedCreateCoachId}
             handleCreateAthlete={handleCreateAthlete}
             createError={createError}
             createSuccess={createSuccess}
@@ -808,6 +851,7 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
       <ManagedAthletesSection
         athletes={athletes}
         isHeadCoach={isHeadCoach}
+        currentCoachId={currentCoachId}
         search={search}
         setSearch={setSearch}
         filter={filter}
@@ -833,7 +877,7 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, initialAt
             if (assignmentSaving) return
             setAssignmentDialog(null)
           }}
-          onToggleCoach={toggleAssignmentCoach}
+          onSelectCoach={selectAssignmentCoach}
           onSave={() => void handleSaveAssignment()}
         />
       ) : null}

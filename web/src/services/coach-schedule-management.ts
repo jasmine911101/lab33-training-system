@@ -3,6 +3,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { GENERAL_EVENT_TYPES, TRAINING_CATEGORIES } from '@/lib/types/schedule-management'
+import { getTaxonomySelectionSnapshot } from '@/services/block-taxonomy'
 import { getAccessibleManagedAthleteForCoach } from '@/services/coach-management'
 import type { CoachProfile } from '@/services/coach'
 import { getAthleteScheduleBundle, getBlockCatalog, type AssignmentDetail, type BlockRecord, type GeneralEventDetail } from '@/services/schedule'
@@ -84,7 +85,8 @@ async function ensureCoachCanManageAthlete(coach: CoachProfile, athleteId: numbe
 }
 
 async function ensureAssignmentBelongsToAthlete(athleteId: number, assignmentId: number) {
-  const supabase = await createClient()
+  const admin = createAdminClient()
+  const supabase = admin ?? (await createClient())
   const { data, error } = await supabase
     .from('athlete_blocks')
     .select('id, athlete_id, block_id')
@@ -97,7 +99,8 @@ async function ensureAssignmentBelongsToAthlete(athleteId: number, assignmentId:
 }
 
 async function ensureEventBelongsToAthlete(athleteId: number, eventId: number) {
-  const supabase = await createClient()
+  const admin = createAdminClient()
+  const supabase = admin ?? (await createClient())
   const { data, error } = await supabase
     .from('athlete_events')
     .select('id, athlete_id')
@@ -529,11 +532,12 @@ export async function getCoachSchedulingPageData(coach: CoachProfile, athleteId:
     return null
   }
 
-  const [schedule, blocks] = await Promise.all([refreshSchedule(athleteId), getBlockCatalog()])
+  const [schedule, blocks, taxonomy] = await Promise.all([refreshSchedule(athleteId), getBlockCatalog(), getTaxonomySelectionSnapshot()])
   return {
     athlete,
     schedule,
     blocks,
+    taxonomy,
   }
 }
 

@@ -26,7 +26,7 @@ export default async function CoachAthleteDetailPage({ params }: { params: Promi
     notFound()
   }
 
-  const { athlete, schedule, blocks } = pageData
+  const { athlete, schedule, blocks, taxonomy } = pageData
 
   return (
     <div className="space-y-6">
@@ -47,7 +47,7 @@ export default async function CoachAthleteDetailPage({ params }: { params: Promi
         isHeadCoach={coachProfile.is_head_coach === true}
       />
 
-      <CoachScheduleManager athleteId={athlete.id} initialSchedule={schedule} blocks={blocks} />
+      <CoachScheduleManager athleteId={athlete.id} initialSchedule={schedule} blocks={blocks} taxonomy={taxonomy} />
     </div>
   )
 }

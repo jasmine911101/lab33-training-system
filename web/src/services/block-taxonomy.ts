@@ -261,3 +261,41 @@ export async function createTrainingCategory(ageGroupId: number, name: string): 
 
   return { data: data as BlockTaxonomyTrainingCategoryRecord, message: '已建立訓練分類。' }
 }
+
+export async function getTaxonomySelectionSnapshot(): Promise<{
+  sports: BlockTaxonomySportRecord[]
+  ageGroups: BlockTaxonomyAgeGroupRecord[]
+  trainingCategories: BlockTaxonomyTrainingCategoryRecord[]
+}> {
+  const supabase = await getTaxonomyReadClient()
+  const [{ data: sports, error: sportsError }, { data: ageGroups, error: ageGroupsError }, { data: trainingCategories, error: trainingCategoriesError }] = await Promise.all([
+    supabase
+      .from('block_taxonomy_sports')
+      .select('id, name, sort_order, is_active, created_at, updated_at')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('id', { ascending: true }),
+    supabase
+      .from('block_taxonomy_age_groups')
+      .select('id, sport_id, name, sort_order, is_active, created_at, updated_at')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('id', { ascending: true }),
+    supabase
+      .from('block_taxonomy_training_categories')
+      .select('id, age_group_id, name, sort_order, is_active, created_at, updated_at')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('id', { ascending: true }),
+  ])
+
+  if (sportsError) throw sportsError
+  if (ageGroupsError) throw ageGroupsError
+  if (trainingCategoriesError) throw trainingCategoriesError
+
+  return {
+    sports: (sports ?? []) as BlockTaxonomySportRecord[],
+    ageGroups: (ageGroups ?? []) as BlockTaxonomyAgeGroupRecord[],
+    trainingCategories: (trainingCategories ?? []) as BlockTaxonomyTrainingCategoryRecord[],
+  }
+}

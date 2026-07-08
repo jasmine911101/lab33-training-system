@@ -288,7 +288,7 @@ export async function createAthleteForCoach(
     email: string
     sport?: string
     level?: string
-    assignedCoachIds?: number[]
+    assignedCoachId?: number | null
   },
 ): Promise<AdminMutationResult<ManagedAthleteRecord>> {
   const { admin, error: adminError } = await ensureServiceRoleClient()
@@ -337,19 +337,20 @@ export async function createAthleteForCoach(
     }
 
     const athleteId = Number(insertedAthlete.id)
-    const requestedCoachIds = coach.is_head_coach
-      ? Array.from(new Set((payload.assignedCoachIds ?? []).map(Number).filter((value) => Number.isFinite(value))))
-      : [coach.id]
+    const requestedCoachId = coach.is_head_coach
+      ? (payload.assignedCoachId != null && Number.isFinite(Number(payload.assignedCoachId)) ? Number(payload.assignedCoachId) : null)
+      : coach.id
 
-    if (requestedCoachIds.length > 0) {
+    if (requestedCoachId != null) {
       const assignableCoaches = await getAssignableCoachDirectory()
       const assignableCoachIds = new Set(assignableCoaches.map((entry) => entry.id))
-      const validCoachIds = requestedCoachIds.filter((id) => assignableCoachIds.has(id))
+      const validCoachId = assignableCoachIds.has(requestedCoachId) ? requestedCoachId : null
 
-      if (validCoachIds.length > 0) {
-        const { error: assignmentError } = await admin.from('coach_athletes').insert(
-          validCoachIds.map((coachId) => ({ coach_id: coachId, athlete_id: athleteId })),
-        )
+      if (validCoachId != null) {
+        const { error: assignmentError } = await admin.from('coach_athletes').insert({
+          coach_id: validCoachId,
+          athlete_id: athleteId,
+        })
 
         if (assignmentError) {
           return { error: assignmentError.message }
@@ -484,24 +485,28 @@ export async function deleteAthleteForCoach(
 
 export async function replaceAthleteCoachAssignments(
   athleteId: number,
-  selectedCoachIds: number[],
+  selectedCoachId: number | null,
 ): Promise<AdminMutationResult<ManagedAthleteRecord>> {
   const { admin, error: adminError } = await ensureServiceRoleClient()
   if (!admin) return { error: adminError ?? '缺少 service role。' }
 
   const assignableCoaches = await getAssignableCoachDirectory()
   const assignableCoachIds = new Set(assignableCoaches.map((entry) => entry.id))
-  const validCoachIds = Array.from(new Set(selectedCoachIds.map(Number).filter((value) => assignableCoachIds.has(value))))
+  const normalizedCoachId =
+    selectedCoachId != null && Number.isFinite(Number(selectedCoachId)) && assignableCoachIds.has(Number(selectedCoachId))
+      ? Number(selectedCoachId)
+      : null
 
   const { error: deleteError } = await admin.from('coach_athletes').delete().eq('athlete_id', athleteId)
   if (deleteError) {
     return { error: deleteError.message }
   }
 
-  if (validCoachIds.length > 0) {
-    const { error: insertError } = await admin.from('coach_athletes').insert(
-      validCoachIds.map((coachId) => ({ coach_id: coachId, athlete_id: athleteId })),
-    )
+  if (normalizedCoachId != null) {
+    const { error: insertError } = await admin.from('coach_athletes').insert({
+      coach_id: normalizedCoachId,
+      athlete_id: athleteId,
+    })
 
     if (insertError) {
       return { error: insertError.message }

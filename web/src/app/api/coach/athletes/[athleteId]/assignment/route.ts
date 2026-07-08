@@ -28,9 +28,12 @@ export async function PUT(
   }
 
   const body = await request.json().catch(() => null)
-  const selectedCoachIds = Array.isArray(body?.coachIds) ? body.coachIds.map(Number) : []
+  const selectedCoachId =
+    body?.coachId === null || body?.coachId === undefined || body?.coachId === ''
+      ? null
+      : Number(body.coachId)
 
-  const result = await replaceAthleteCoachAssignments(athlete.id, selectedCoachIds)
+  const result = await replaceAthleteCoachAssignments(athlete.id, selectedCoachId)
   if (result.error || !result.data) {
     return NextResponse.json({ error: result.error ?? '更新教練指派失敗。' }, { status: 400 })
   }

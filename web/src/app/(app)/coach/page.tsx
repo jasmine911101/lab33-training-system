@@ -45,6 +45,7 @@ export default async function CoachHomePage() {
         roleLabel={roleLabel}
         userEmail={context.user.email}
         coachName={coachProfile.name ?? coachProfile.email ?? null}
+        currentCoachId={coachProfile.id}
         initialAthletes={managementSnapshot.athletes}
         assignableCoaches={managementSnapshot.assignableCoaches}
         isHeadCoach={coachProfile.is_head_coach === true}

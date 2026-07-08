@@ -1,3 +1,4 @@
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
 export type BlockRecord = {
@@ -7,6 +8,7 @@ export type BlockRecord = {
   goal: string | null
   training_element: string | null
   description: string | null
+  training_category_id: number | null
 }
 
 export type AthleteBlockRecord = {
@@ -63,7 +65,12 @@ export type AssignmentDetail = {
   kind: 'assignment'
   block_id: number | null
   block_label: string
+  block_name: string
   meta: string
+  week_label: string
+  event_display_name: string
+  category_label: string
+  block_code: string
   event_name: string
   date_range: string
   start_date: string
@@ -177,19 +184,47 @@ function athleteEventTitle(row: Partial<AthleteEventRecord>) {
   return text(row.title) || text(row.event_type) || '一般事件'
 }
 
+async function getScheduleReadClient() {
+  const admin = createAdminClient()
+  if (admin) {
+    return admin
+  }
+
+  return await createClient()
+}
+
 async function fetchBlocks() {
-  const supabase = await createClient()
+  const supabase = await getScheduleReadClient()
   const { data, error } = await supabase
     .from('blocks')
-    .select('id, block_code, block_name, goal, training_element, description')
+    .select('id, block_code, block_name, goal, training_element, description, training_category_id')
     .order('id', { ascending: true })
 
   if (error) throw error
   return (data ?? []) as BlockRecord[]
 }
 
+async function fetchTrainingCategoryNames(categoryIds: number[]) {
+  const normalizedIds = Array.from(new Set(categoryIds.filter((value) => Number.isFinite(value))))
+  if (normalizedIds.length === 0) {
+    return new Map<number, string>()
+  }
+
+  const supabase = await getScheduleReadClient()
+  const { data, error } = await supabase
+    .from('block_taxonomy_training_categories')
+    .select('id, name')
+    .in('id', normalizedIds)
+
+  if (error) throw error
+
+  return new Map(
+    (data ?? []).map((row) => [Number(row.id), text(row.name)]),
+  )
+}
+
 async function fetchAthleteBlocks(athleteId: number) {
-  const supabase = await createClient()
+  const supabase = await getScheduleReadClient()
   const { data, error } = await supabase
     .from('athlete_blocks')
     .select('id, athlete_id, block_id, event_name, cycle_goal, scheduled_date, start_date, end_date, week_num, day_num, training_category, notes, created_at')
@@ -201,7 +236,7 @@ async function fetchAthleteBlocks(athleteId: number) {
 }
 
 async function fetchAthleteEvents(athleteId: number) {
-  const supabase = await createClient()
+  const supabase = await getScheduleReadClient()
   const { data, error } = await supabase
     .from('athlete_events')
     .select('id, athlete_id, title, event_type, start_date, end_date, notes, created_at')
@@ -214,7 +249,7 @@ async function fetchAthleteEvents(athleteId: number) {
 }
 
 async function fetchAthleteBlockExercises(athleteBlockId: number) {
-  const supabase = await createClient()
+  const supabase = await getScheduleReadClient()
   const { data, error } = await supabase
     .from('athlete_block_exercises')
 .select('id, athlete_block_id, section_name, section_order, exercise_name, sets, reps_or_time, equipment, intensity, weight, actual_sets, actual_weight, rest, video_url, notes, order_num')
@@ -227,7 +262,7 @@ async function fetchAthleteBlockExercises(athleteBlockId: number) {
 }
 
 async function fetchBlockSections(blockId: number) {
-  const supabase = await createClient()
+  const supabase = await getScheduleReadClient()
   const { data, error } = await supabase
     .from('block_sections')
     .select('id, block_id, section_name, order_num')
@@ -239,7 +274,7 @@ async function fetchBlockSections(blockId: number) {
 }
 
 async function fetchBlockExercises(blockId: number) {
-  const supabase = await createClient()
+  const supabase = await getScheduleReadClient()
   const { data, error } = await supabase
     .from('block_exercises')
     .select('id, block_id, section_id, exercise_name, sets, reps_or_time, equipment, intensity, weight, rest, video_url, order_num, notes')
@@ -328,9 +363,21 @@ async function buildSectionsFromTemplate(blockId: number): Promise<ExerciseSecti
     .map(([name, value]) => ({ name, rows: value.rows }))
 }
 
-async function buildAssignmentDetail(row: AthleteBlockRecord, blocksById: Map<number, BlockRecord>): Promise<AssignmentDetail> {
+async function buildAssignmentDetail(
+  row: AthleteBlockRecord,
+  blocksById: Map<number, BlockRecord>,
+  taxonomyNameById: Map<number, string>,
+): Promise<AssignmentDetail> {
   const block = row.block_id ? blocksById.get(row.block_id) ?? null : null
   const label = blockLabel(block, row.block_id)
+  const blockName = text(block?.block_name) || '未命名板塊'
+  const eventDisplayName = text(row.event_name) || text(block?.block_name) || label
+  const categoryLabel =
+    (block?.training_category_id != null ? taxonomyNameById.get(Number(block.training_category_id)) : '') ||
+    text(row.training_category) ||
+    '未分類'
+  const codeLabel = text(block?.block_code)
+  const weekLabel = `Week ${row.week_num ?? '-'}`
   const assignmentRows = await fetchAthleteBlockExercises(row.id)
   const sections = assignmentRows.length > 0 || !row.block_id ? buildSectionsFromAssignmentRows(assignmentRows) : await buildSectionsFromTemplate(row.block_id)
 
@@ -340,9 +387,14 @@ async function buildAssignmentDetail(row: AthleteBlockRecord, blocksById: Map<nu
     kind: 'assignment',
     block_id: row.block_id,
     block_label: label,
-    meta: [`Week ${row.week_num ?? '-'} / Day ${row.day_num ?? '-'}`, dateRangeLabel(row), text(row.training_category) || '未分類', label]
+    block_name: blockName,
+    meta: [weekLabel, categoryLabel, codeLabel || label]
       .filter(Boolean)
       .join('｜'),
+    week_label: weekLabel,
+    event_display_name: eventDisplayName,
+    category_label: categoryLabel,
+    block_code: codeLabel,
     event_name: text(row.event_name),
     date_range: dateRangeLabel(row),
     start_date: text(row.start_date || row.scheduled_date),
@@ -390,7 +442,10 @@ export async function getAthleteScheduleBundle(athleteId: number): Promise<Athle
   ])
 
   const blocksById = new Map<number, BlockRecord>(blocks.map((block) => [block.id, block]))
-  const assignments = await Promise.all(athleteBlocks.map((row) => buildAssignmentDetail(row, blocksById)))
+  const taxonomyNameById = await fetchTrainingCategoryNames(
+    blocks.map((block) => Number(block.training_category_id)).filter((value) => Number.isFinite(value)),
+  )
+  const assignments = await Promise.all(athleteBlocks.map((row) => buildAssignmentDetail(row, blocksById, taxonomyNameById)))
   const generalEvents = athleteEvents.map(buildGeneralEventDetail)
 
   return {

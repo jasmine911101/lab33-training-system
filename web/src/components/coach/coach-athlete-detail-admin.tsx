@@ -33,7 +33,7 @@ function AssignmentEditor({
   assignableCoaches: CoachDirectoryEntry[]
   onSaved: (athlete: ManagedAthleteRecord, message?: string) => void
 }) {
-  const [selectedCoachIds, setSelectedCoachIds] = useState<number[]>(athlete.assignedCoachIds)
+  const [selectedCoachId, setSelectedCoachId] = useState<number | null>(athlete.assignedCoachIds[0] ?? null)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isOpen, setIsOpen] = useState(false)
@@ -45,7 +45,7 @@ function AssignmentEditor({
     try {
       const payload = await requestJson<{ athlete: ManagedAthleteRecord }>(`/api/coach/athletes/${athlete.id}/assignment`, {
         method: 'PUT',
-        body: JSON.stringify({ coachIds: selectedCoachIds }),
+        body: JSON.stringify({ coachId: selectedCoachId }),
       })
       onSaved(payload.athlete, payload.message)
     } catch (requestError) {
@@ -53,12 +53,6 @@ function AssignmentEditor({
     } finally {
       setIsSaving(false)
     }
-  }
-
-  function toggleCoach(coachId: number) {
-    setSelectedCoachIds((current) =>
-      current.includes(coachId) ? current.filter((value) => value !== coachId) : [...current, coachId],
-    )
   }
 
   return (
@@ -75,22 +69,39 @@ function AssignmentEditor({
 
       {isOpen ? (
         <>
-          {assignableCoaches.length === 0 ? (
-            <p className="text-sm text-slate-500">目前沒有可指派的一般教練。</p>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {assignableCoaches.map((coach) => (
-                <label key={coach.id} className="flex items-center gap-3 rounded-2xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={selectedCoachIds.includes(coach.id)}
-                    onChange={() => toggleCoach(coach.id)}
-                  />
-                  <span>{coachDisplayName(coach)}</span>
-                </label>
-              ))}
-            </div>
-          )}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="flex items-start gap-3 rounded-2xl border border-slate-200 px-3 py-3 text-sm text-slate-700">
+              <input
+                type="radio"
+                name={`detail-assignment-${athlete.id}`}
+                checked={selectedCoachId === null}
+                onChange={() => setSelectedCoachId(null)}
+                className="mt-1"
+              />
+              <span className="space-y-1">
+                <span className="block font-semibold text-slate-900">未指派</span>
+                <span className="block text-xs leading-6 text-slate-500">移除目前負責教練，但保留已安排課表、板塊與回報資料。</span>
+              </span>
+            </label>
+            {assignableCoaches.length === 0 ? (
+              <p className="text-sm text-slate-500">目前沒有可指派的一般教練。</p>
+            ) : (
+              <>
+                {assignableCoaches.map((coach) => (
+                  <label key={coach.id} className="flex items-start gap-3 rounded-2xl border border-slate-200 px-3 py-3 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name={`detail-assignment-${athlete.id}`}
+                      checked={selectedCoachId === coach.id}
+                      onChange={() => setSelectedCoachId(coach.id)}
+                      className="mt-1"
+                    />
+                    <span className="block leading-6">{coachDisplayName(coach)}</span>
+                  </label>
+                ))}
+              </>
+            )}
+          </div>
           {error ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
           <button type="button" className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" disabled={isSaving} onClick={handleSave}>
             {isSaving ? '儲存中...' : '儲存指派'}
@@ -118,6 +129,7 @@ export function CoachAthleteDetailAdmin({
   const [isResetting, setIsResetting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [isProfileOpen, setIsProfileOpen] = useState(false)
 
   async function handleResetPassword() {
     setIsResetting(true)
@@ -161,55 +173,70 @@ export function CoachAthleteDetailAdmin({
   return (
     <section className="space-y-6">
       <article className="lab-card p-6 sm:p-7">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="lab-eyebrow">Athlete Profile</p>
-            <h3 className="mt-3 text-2xl font-bold text-slate-900">學員資料</h3>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {athlete.must_change_password ? <span className="lab-badge-warning">需更新密碼</span> : <span className="lab-badge-success">可正常登入</span>}
-          </div>
-        </div>
-
-        <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">姓名</dt><dd className="mt-1 font-semibold text-slate-900">{athlete.name ?? '-'}</dd></div>
-          <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">Email</dt><dd className="mt-1 font-semibold text-slate-900 break-all">{athlete.email ?? '-'}</dd></div>
-          <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">運動項目</dt><dd className="mt-1 font-semibold text-slate-900">{athlete.sport ?? '-'}</dd></div>
-          <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">程度</dt><dd className="mt-1 font-semibold text-slate-900">{athlete.level ?? '-'}</dd></div>
-        </dl>
-
-        <div className="mt-6 flex flex-wrap gap-3">
-          <button type="button" className="lab-btn-secondary" disabled={isResetting} onClick={() => void handleResetPassword()}>
-            {isResetting ? '重設中...' : '重設臨時密碼'}
-          </button>
-          <button type="button" className="lab-btn-secondary" onClick={() => setConfirmDelete((current) => !current)}>
-            {confirmDelete ? '收起刪除確認' : '刪除學員'}
-          </button>
-        </div>
-
-        {feedback ? <p className="mt-4 rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{feedback}</p> : null}
-        {error ? <p className="mt-4 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
-        {tempPassword ? (
-          <div className="mt-4 rounded-[1.25rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-            <p className="font-semibold">請把這組臨時密碼交給學員</p>
-            <p className="mt-2">Email：{tempPassword.email}</p>
-            <p className="mt-1 font-mono">Temporary Password：{tempPassword.password}</p>
-          </div>
-        ) : null}
-
-        {confirmDelete ? (
-          <div className="mt-4 rounded-[1.25rem] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-900">
-            <p className="font-semibold">確認要刪除 {athlete.name ?? athlete.email ?? '這位學員'} 嗎？</p>
-            <p className="mt-2">刪除後會移除學員資料，並清掉已安排的課表板塊。</p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button type="button" className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" disabled={isDeleting} onClick={() => void handleDelete()}>
-                {isDeleting ? '刪除中...' : '確認刪除'}
-              </button>
-              <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setConfirmDelete(false)}>
-                取消
-              </button>
+        <button
+          type="button"
+          className="flex w-full items-start justify-between gap-4 rounded-[1.25rem] text-left transition hover:bg-slate-50/80"
+          onClick={() => setIsProfileOpen((current) => !current)}
+          aria-expanded={isProfileOpen}
+        >
+          <div className="min-w-0 space-y-3">
+            <div>
+              <p className="lab-eyebrow">Athlete Profile</p>
+              <h3 className="mt-3 text-2xl font-bold text-slate-900">{athlete.name ?? '未命名學員'}</h3>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+              <span className="truncate font-medium text-slate-700">{athlete.email ?? '-'}</span>
+              {athlete.must_change_password ? <span className="lab-badge-warning">需更新密碼</span> : <span className="lab-badge-success">可正常登入</span>}
             </div>
           </div>
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-lg text-slate-500 transition">
+            {isProfileOpen ? '⌃' : '⌄'}
+          </span>
+        </button>
+
+        {isProfileOpen ? (
+          <>
+            <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">姓名</dt><dd className="mt-1 font-semibold text-slate-900">{athlete.name ?? '-'}</dd></div>
+              <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">Email</dt><dd className="mt-1 font-semibold text-slate-900 break-all">{athlete.email ?? '-'}</dd></div>
+              <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">運動項目</dt><dd className="mt-1 font-semibold text-slate-900">{athlete.sport ?? '-'}</dd></div>
+              <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">程度</dt><dd className="mt-1 font-semibold text-slate-900">{athlete.level ?? '-'}</dd></div>
+            </dl>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button type="button" className="lab-btn-secondary" disabled={isResetting} onClick={() => void handleResetPassword()}>
+                {isResetting ? '重設中...' : '重設臨時密碼'}
+              </button>
+              <button type="button" className="lab-btn-secondary" onClick={() => setConfirmDelete((current) => !current)}>
+                {confirmDelete ? '收起刪除確認' : '刪除學員'}
+              </button>
+            </div>
+
+            {feedback ? <p className="mt-4 rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{feedback}</p> : null}
+            {error ? <p className="mt-4 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+            {tempPassword ? (
+              <div className="mt-4 rounded-[1.25rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+                <p className="font-semibold">請把這組臨時密碼交給學員</p>
+                <p className="mt-2">Email：{tempPassword.email}</p>
+                <p className="mt-1 font-mono">Temporary Password：{tempPassword.password}</p>
+              </div>
+            ) : null}
+
+            {confirmDelete ? (
+              <div className="mt-4 rounded-[1.25rem] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-900">
+                <p className="font-semibold">確認要刪除 {athlete.name ?? athlete.email ?? '這位學員'} 嗎？</p>
+                <p className="mt-2">刪除後會移除學員資料，並清掉已安排的課表板塊。</p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button type="button" className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" disabled={isDeleting} onClick={() => void handleDelete()}>
+                    {isDeleting ? '刪除中...' : '確認刪除'}
+                  </button>
+                  <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setConfirmDelete(false)}>
+                    取消
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : null}
       </article>
 

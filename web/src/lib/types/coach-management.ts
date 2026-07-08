@@ -90,6 +90,10 @@ export function rankAthletesBySearch(athletes: ManagedAthleteRecord[], query: st
       score += scoreSearchText(athlete.name, normalizedQuery, 240, 180, 140, 100)
       score += scoreSearchText(athlete.email, normalizedQuery, 220, 160, 120, 90)
       score += scoreSearchText(athlete.sport, normalizedQuery, 180, 130, 100, 70)
+      score += athlete.assignedCoachLabels.reduce(
+        (total, label) => total + scoreSearchText(label, normalizedQuery, 200, 150, 120, 90),
+        0,
+      )
       return { athlete, score }
     })
     .filter((entry) => entry.score > 0)
