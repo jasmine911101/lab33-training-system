@@ -319,6 +319,39 @@ function buildSectionsFromAssignmentRows(rows: AthleteBlockExerciseRecord[]): Ex
     .map(([name, value]) => ({ name, rows: value.rows }))
 }
 
+function mergeTemplateVideoFallback(
+  assignmentSections: ExerciseSection[],
+  templateSections: ExerciseSection[],
+): ExerciseSection[] {
+  return assignmentSections.map((section) => {
+    const matchedTemplateSection =
+      templateSections.find((candidate) => candidate.name === section.name) ??
+      null
+
+    const fallbackRowsByName = new Map(
+      (matchedTemplateSection?.rows ?? []).map((row) => [text(row.exercise_name), row]),
+    )
+
+    return {
+      ...section,
+      rows: section.rows.map((row, index) => {
+        if (text(row.video_url)) return row
+
+        const templateRowByIndex = matchedTemplateSection?.rows[index] ?? null
+        const templateRowByName = fallbackRowsByName.get(text(row.exercise_name)) ?? null
+        const fallbackVideoUrl = text(templateRowByIndex?.video_url) || text(templateRowByName?.video_url)
+
+        return fallbackVideoUrl
+          ? {
+              ...row,
+              video_url: fallbackVideoUrl,
+            }
+          : row
+      }),
+    }
+  })
+}
+
 async function buildSectionsFromTemplate(blockId: number): Promise<ExerciseSection[]> {
   const [sections, exercises] = await Promise.all([fetchBlockSections(blockId), fetchBlockExercises(blockId)])
   if (exercises.length === 0) return []
@@ -379,7 +412,18 @@ async function buildAssignmentDetail(
   const codeLabel = text(block?.block_code)
   const weekLabel = `Week ${row.week_num ?? '-'}`
   const assignmentRows = await fetchAthleteBlockExercises(row.id)
-  const sections = assignmentRows.length > 0 || !row.block_id ? buildSectionsFromAssignmentRows(assignmentRows) : await buildSectionsFromTemplate(row.block_id)
+  let sections: ExerciseSection[]
+
+  if (assignmentRows.length > 0 || !row.block_id) {
+    sections = buildSectionsFromAssignmentRows(assignmentRows)
+
+    if (assignmentRows.length > 0 && row.block_id) {
+      const templateSections = await buildSectionsFromTemplate(row.block_id)
+      sections = mergeTemplateVideoFallback(sections, templateSections)
+    }
+  } else {
+    sections = await buildSectionsFromTemplate(row.block_id)
+  }
 
   return {
     id: `assignment-${row.id}`,

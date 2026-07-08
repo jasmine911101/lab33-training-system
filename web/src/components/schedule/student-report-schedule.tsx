@@ -2,9 +2,9 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 
 import { GENERAL_EVENT_TYPES } from '@/lib/types/schedule-management'
+import { normalizeExternalUrl } from '@/lib/external-url'
 import type { AthleteScheduleBundle, AssignmentDetail, ExerciseRow, GeneralEventDetail } from '@/services/schedule'
 
 type ScheduleItem =
@@ -61,6 +61,10 @@ function formatMonthLabel(isoMonth: string) {
 
 function rangeIncludes(date: string, startDate: string, endDate: string) {
   return date >= startDate && date <= endDate
+}
+
+function rangeOverlaps(startDate: string, endDate: string, rangeStart: string, rangeEnd: string) {
+  return startDate <= rangeEnd && endDate >= rangeStart
 }
 
 function truncateText(value: string, maxLength: number) {
@@ -262,8 +266,8 @@ function StudentExerciseReportTable({
                   {!row.notes && !isReported && !diffLabel ? '-' : null}
                 </td>
                 <td className="border border-slate-200 px-4 py-3 text-slate-600">
-                  {row.video_url ? (
-                    <a href={row.video_url} target="_blank" rel="noreferrer" className="lab-badge-info">
+                  {normalizeExternalUrl(row.video_url) ? (
+                    <a href={normalizeExternalUrl(row.video_url) ?? undefined} target="_blank" rel="noreferrer" className="lab-badge-info">
                       影片連結
                     </a>
                   ) : '-'}
@@ -274,6 +278,198 @@ function StudentExerciseReportTable({
         </tbody>
       </table>
     </div>
+  )
+}
+
+function StudentPreviewExerciseTable({ rows }: { rows: ExerciseRow[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-[1100px] w-full border-separate border-spacing-0 text-sm">
+        <thead>
+          <tr className="text-left">
+            <th className="rounded-tl-2xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">動作名稱</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">組數</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">次數 / 時間</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">強度</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">重量</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">休息</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">工具</th>
+            <th className="border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">備註</th>
+            <th className="rounded-tr-2xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">影片</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${row.id || row.exercise_name}-${index}`} className="bg-white">
+              <td className="border border-slate-200 px-4 py-3 font-medium text-slate-900">{row.exercise_name || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.sets || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.reps_or_time || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.intensity || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.weight || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.rest || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.equipment || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.notes || '-'}</td>
+              <td className="border border-slate-200 px-4 py-3 text-slate-600">
+                {normalizeExternalUrl(row.video_url) ? (
+                  <a href={normalizeExternalUrl(row.video_url) ?? undefined} target="_blank" rel="noreferrer" className="lab-badge-info">
+                    影片連結
+                  </a>
+                ) : '-'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function StudentPreviewAssignmentCard({
+  assignment,
+  href,
+}: {
+  assignment: AssignmentDetail
+  href: string
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [expandedSections, setExpandedSections] = useState<string[]>([])
+
+  const resolvedBlockName =
+    (assignment.block_label ? blockNameFromLabel(assignment.block_label) : '') ||
+    assignment.block_name ||
+    '未命名板塊'
+  const resolvedBlockLabel =
+    assignment.block_code && resolvedBlockName !== '未命名板塊'
+      ? `${assignment.block_code} | ${resolvedBlockName}`
+      : assignment.block_label || resolvedBlockName
+
+  function toggleSection(sectionName: string) {
+    setExpandedSections((current) =>
+      current.includes(sectionName) ? current.filter((item) => item !== sectionName) : [...current, sectionName],
+    )
+  }
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsOpen(false)
+      }
+    }
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen])
+
+  return (
+    <>
+      <article className="rounded-[1.25rem] border border-slate-200 bg-white px-5 py-5">
+        <button type="button" className="flex w-full items-start justify-between gap-4 text-left" onClick={() => setIsOpen(true)}>
+          <div className="min-w-0">
+            <p className="lab-eyebrow">Next Assignment</p>
+            <h3 className="mt-3 text-lg font-bold text-slate-900">下一個課表</h3>
+            <div className="mt-4 space-y-2">
+              <p className="text-sm font-semibold text-slate-500">{assignment.start_date || assignment.date_range || '-'}</p>
+              <p className="text-base font-semibold text-slate-900 transition hover:text-orange-500">{resolvedBlockName}</p>
+            </div>
+          </div>
+          <span className="lab-btn-secondary !min-h-10 shrink-0 px-4 py-2 text-sm">查看內容</span>
+        </button>
+      </article>
+
+      {isOpen ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setIsOpen(false)}>
+          <div
+            className="relative flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.2)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5 sm:px-7">
+              <div className="min-w-0">
+                <p className="lab-eyebrow">Assignment Preview</p>
+                <h3 className="mt-3 text-2xl font-bold text-slate-900 sm:text-3xl">{resolvedBlockName}</h3>
+              </div>
+              <button type="button" className="lab-btn-secondary !min-h-10 shrink-0 px-4 py-2 text-sm" onClick={() => setIsOpen(false)}>
+                關閉
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-6 sm:px-7">
+              <div className="flex flex-wrap gap-2">
+                <span className="lab-badge bg-slate-100 text-slate-700">{assignment.week_label}</span>
+                <span className="lab-badge bg-slate-100 text-slate-700">事件：{assignment.event_display_name || '-'}</span>
+                <span className="lab-badge bg-sky-100 text-sky-700">{assignment.category_label}</span>
+                <span className="lab-badge bg-amber-100 text-amber-800">{assignment.block_code || '未設定代號'}</span>
+                <span className="lab-badge bg-slate-100 text-slate-700">{assignment.date_range || '-'}</span>
+              </div>
+
+              <p className="mt-4 text-sm text-slate-600">板塊：{resolvedBlockLabel}</p>
+
+              <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+                <DetailMeta label="Week" value={assignment.week_label} />
+                <DetailMeta label="事件" value={assignment.event_display_name} />
+                <DetailMeta label="分類" value={assignment.category_label} />
+                <DetailMeta label="代號" value={assignment.block_code || '未設定'} />
+                <DetailMeta label="日期" value={assignment.date_range} />
+                <DetailMeta label="目標" value={assignment.goal} />
+                <DetailMeta label="描述" value={assignment.description} />
+                <DetailMeta label="訓練元素" value={assignment.training_element} />
+              </dl>
+
+              {assignment.sections.length === 0 ? (
+                <div className="lab-card-muted mt-6 px-4 py-4 text-sm text-slate-600">{assignment.empty_message}</div>
+              ) : (
+                <div className="mt-6 space-y-4">
+                  {assignment.sections.map((section) => {
+                    const isSectionOpen = expandedSections.includes(section.name)
+                    return (
+                      <section key={`${assignment.id}-preview-${section.name}`} className="rounded-[1rem] border border-slate-200 bg-slate-50/60">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left"
+                          onClick={() => toggleSection(section.name)}
+                        >
+                          <div>
+                            <h4 className="text-base font-bold text-slate-900">{section.name}</h4>
+                            <p className="mt-1 text-sm text-slate-500">{section.rows.length} 個動作</p>
+                          </div>
+                          <span className="text-base font-semibold text-slate-400">{isSectionOpen ? '▾' : '▸'}</span>
+                        </button>
+                        {isSectionOpen ? (
+                          <div className="border-t border-slate-200 px-4 py-4">
+                            <StudentPreviewExerciseTable rows={section.rows} />
+                          </div>
+                        ) : null}
+                      </section>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-slate-200 px-6 py-5 sm:px-7">
+              <div className="rounded-[1rem] bg-sky-50 px-4 py-4 text-sm text-sky-800">
+                這裡提供首頁快速查看。若要回報實際訓練狀況，請進入完整行事曆。
+              </div>
+              <div className="mt-4 flex flex-wrap justify-end gap-3">
+                <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setIsOpen(false)}>
+                  關閉
+                </button>
+                <Link href={href} className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" onClick={() => setIsOpen(false)}>
+                  前往完整行事曆回報
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }
 
@@ -635,11 +831,41 @@ function CalendarMonthGrid({
 }
 
 export function StudentCalendarPreview({ schedule, href }: StudentCalendarPreviewProps) {
-  const router = useRouter()
   const initialDate = todayIso()
-  const [visibleMonth, setVisibleMonth] = useState(initialDate.slice(0, 7))
-  const calendarItems = useMemo(() => buildScheduleItems(schedule), [schedule])
-  const monthDays = useMemo(() => buildMonthDays(calendarItems, visibleMonth), [calendarItems, visibleMonth])
+  const visibleMonth = initialDate.slice(0, 7)
+  const monthLabel = formatMonthLabel(visibleMonth)
+  const monthStart = `${visibleMonth}-01`
+  const monthEndDate = new Date(`${visibleMonth}-01T00:00:00`)
+  monthEndDate.setMonth(monthEndDate.getMonth() + 1, 0)
+  const monthEnd = `${monthEndDate.getFullYear()}-${padMonth(monthEndDate.getMonth() + 1)}-${padMonth(monthEndDate.getDate())}`
+
+  const monthlyAssignmentCount = schedule.assignments.filter((assignment) =>
+    rangeOverlaps(
+      assignment.start_date || monthStart,
+      assignment.end_date || assignment.start_date || monthStart,
+      monthStart,
+      monthEnd,
+    ),
+  ).length
+
+  const monthlyEventCount = schedule.generalEvents.filter((event) =>
+    rangeOverlaps(
+      event.start_date || monthStart,
+      event.end_date || event.start_date || monthStart,
+      monthStart,
+      monthEnd,
+    ),
+  ).length
+
+  const nextAssignment =
+    [...schedule.assignments]
+      .filter((assignment) => (assignment.end_date || assignment.start_date || '') >= initialDate)
+      .sort((left, right) => (left.start_date || '').localeCompare(right.start_date || ''))[0] ?? null
+
+  const nextEvent =
+    [...schedule.generalEvents]
+      .filter((event) => (event.end_date || event.start_date || '') >= initialDate)
+      .sort((left, right) => (left.start_date || '').localeCompare(right.start_date || ''))[0] ?? null
 
   return (
     <article className="lab-card p-6 sm:p-7">
@@ -647,23 +873,58 @@ export function StudentCalendarPreview({ schedule, href }: StudentCalendarPrevie
         <div>
           <p className="lab-eyebrow">Calendar Preview</p>
           <h2 className="lab-section-title mt-3">本月課表預覽</h2>
-          <p className="lab-copy mt-3">保留首頁的小型月曆摘要；需要完整查看課表、事件與回報時，再進入完整行事曆。</p>
+          <p className="lab-copy mt-3">首頁只保留本月摘要；需要完整查看課表、事件與回報時，再進入完整行事曆。</p>
         </div>
-        <Link href={href} className="lab-btn-secondary">
-          查看完整行事曆
-        </Link>
       </div>
 
-      <div className="mt-6">
-        <CalendarMonthGrid
-          compact
-          visibleMonth={visibleMonth}
-          monthDays={monthDays}
-          selectedDate={initialDate}
-          onPreviousMonth={() => setVisibleMonth((current) => shiftMonth(current, -1))}
-          onNextMonth={() => setVisibleMonth((current) => shiftMonth(current, 1))}
-          onSelectDate={() => router.push(href)}
-        />
+      <div className="mt-6 space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="lab-badge bg-slate-100 text-slate-700">{monthLabel}</span>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <article className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4">
+            <p className="lab-eyebrow">Assignments</p>
+            <p className="mt-3 text-3xl font-bold text-slate-900">{monthlyAssignmentCount}</p>
+            <p className="mt-2 text-sm text-slate-500">本月課表安排</p>
+          </article>
+          <article className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4">
+            <p className="lab-eyebrow">Events</p>
+            <p className="mt-3 text-3xl font-bold text-slate-900">{monthlyEventCount}</p>
+            <p className="mt-2 text-sm text-slate-500">本月一般事件</p>
+          </article>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-2">
+          {nextAssignment ? (
+            <StudentPreviewAssignmentCard assignment={nextAssignment} href={href} />
+          ) : (
+            <article className="rounded-[1.25rem] border border-slate-200 bg-white px-5 py-5">
+              <p className="lab-eyebrow">Next Assignment</p>
+              <h3 className="mt-3 text-lg font-bold text-slate-900">下一個課表</h3>
+              <p className="mt-4 text-sm text-slate-500">目前沒有即將到來的課表</p>
+            </article>
+          )}
+
+          <article className="rounded-[1.25rem] border border-slate-200 bg-white px-5 py-5">
+            <p className="lab-eyebrow">Next Event</p>
+            <h3 className="mt-3 text-lg font-bold text-slate-900">下一個事件</h3>
+            {nextEvent ? (
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-semibold text-slate-500">{nextEvent.start_date || nextEvent.date_range || '-'}</p>
+                <p className="text-base font-semibold text-slate-900">{nextEvent.event_name || '一般事件'}</p>
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-slate-500">目前沒有即將到來的事件</p>
+            )}
+          </article>
+        </div>
+
+        <div>
+          <Link href={href} className="lab-btn-secondary">
+            查看完整行事曆
+          </Link>
+        </div>
       </div>
     </article>
   )

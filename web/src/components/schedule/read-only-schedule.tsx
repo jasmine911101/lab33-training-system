@@ -1,3 +1,4 @@
+import { normalizeExternalUrl } from '@/lib/external-url'
 import type { AthleteScheduleBundle, AssignmentDetail, ExerciseRow, GeneralEventDetail } from '@/services/schedule'
 
 function DetailMeta({ label, value }: { label: string; value: string }) {
@@ -18,8 +19,8 @@ function ExerciseRowCard({ row }: { row: ExerciseRow }) {
           <h5 className="text-base font-bold text-slate-900">{row.exercise_name || '未命名動作'}</h5>
           <p className="mt-1 text-sm text-slate-500">{[row.sets && `組數 ${row.sets}`, row.reps_or_time && `次數/時間 ${row.reps_or_time}`].filter(Boolean).join(' · ') || '未設定組數/次數'}</p>
         </div>
-        {row.video_url ? (
-          <a href={row.video_url} target="_blank" rel="noreferrer" className="lab-badge-info">
+        {normalizeExternalUrl(row.video_url) ? (
+          <a href={normalizeExternalUrl(row.video_url) ?? undefined} target="_blank" rel="noreferrer" className="lab-badge-info">
             影片連結
           </a>
         ) : null}

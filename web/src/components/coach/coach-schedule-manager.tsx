@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { normalizeExternalUrl } from '@/lib/external-url'
 import { GENERAL_EVENT_TYPES, TRAINING_CATEGORIES } from '@/lib/types/schedule-management'
 import type {
   BlockTaxonomyAgeGroupRecord,
@@ -407,8 +408,8 @@ function ExerciseReadTable({ rows }: { rows: AssignmentDetail['sections'][number
               <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.rest || '-'}</td>
               <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.equipment || '-'}</td>
               <td className="border border-slate-200 px-4 py-3 text-slate-600">
-                {row.video_url ? (
-                  <a href={row.video_url} target="_blank" rel="noreferrer" className="lab-badge-info">
+                {normalizeExternalUrl(row.video_url) ? (
+                  <a href={normalizeExternalUrl(row.video_url) ?? undefined} target="_blank" rel="noreferrer" className="lab-badge-info">
                     影片連結
                   </a>
                 ) : '-'}

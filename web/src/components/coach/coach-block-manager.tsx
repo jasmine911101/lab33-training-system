@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 
+import { normalizeExternalUrl } from '@/lib/external-url'
 import {
   MANUAL_BLOCK_SECTION_NAMES,
   type BlockExerciseTemplateInput,
@@ -171,8 +172,8 @@ function BlockDetailTable({ block }: { block: BlockTemplateRecord }) {
                     <td className="border-b border-slate-100 px-3 py-3">{exercise.weight || '-'}</td>
                     <td className="border-b border-slate-100 px-3 py-3">{exercise.rest || '-'}</td>
                     <td className="border-b border-slate-100 px-3 py-3">
-                      {exercise.video_url ? (
-                        <a href={exercise.video_url} target="_blank" rel="noreferrer" className="lab-badge-info">
+                      {normalizeExternalUrl(exercise.video_url) ? (
+                        <a href={normalizeExternalUrl(exercise.video_url) ?? undefined} target="_blank" rel="noreferrer" className="lab-badge-info">
                           開啟影片
                         </a>
                       ) : (

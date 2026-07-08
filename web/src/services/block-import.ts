@@ -2,6 +2,7 @@ import 'server-only'
 
 import * as XLSX from 'xlsx'
 
+import { normalizeExternalUrl } from '@/lib/external-url'
 import { MANUAL_BLOCK_SECTION_NAMES, type BlockExerciseTemplateInput, type ImportedBlockTemplate } from '@/lib/types/block-management'
 
 const BLOCK_SECTION_NAMES = [
@@ -66,22 +67,34 @@ function getSheetBounds(sheet: XLSX.WorkSheet) {
   return XLSX.utils.decode_range(ref)
 }
 
-function getCellValue(sheet: XLSX.WorkSheet, rowIndex: number, columnIndex: number) {
+function getResolvedCell(sheet: XLSX.WorkSheet, rowIndex: number, columnIndex: number) {
   const address = XLSX.utils.encode_cell({ r: rowIndex - 1, c: columnIndex - 1 })
   const cell = sheet[address]
-  if (cell?.v != null) {
-    return cellText(cell.v)
-  }
+  if (cell) return cell
 
   const merges = (sheet['!merges'] ?? []) as XLSX.Range[]
   for (const merge of merges) {
     if (rowIndex - 1 >= merge.s.r && rowIndex - 1 <= merge.e.r && columnIndex - 1 >= merge.s.c && columnIndex - 1 <= merge.e.c) {
       const mergedAddress = XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c })
-      return cellText(sheet[mergedAddress]?.v)
+      return sheet[mergedAddress]
     }
   }
 
+  return null
+}
+
+function getCellValue(sheet: XLSX.WorkSheet, rowIndex: number, columnIndex: number) {
+  const cell = getResolvedCell(sheet, rowIndex, columnIndex)
+  if (cell?.v != null) {
+    return cellText(cell.v)
+  }
+
   return ''
+}
+
+function getCellHyperlinkTarget(sheet: XLSX.WorkSheet, rowIndex: number, columnIndex: number) {
+  const cell = getResolvedCell(sheet, rowIndex, columnIndex) as (XLSX.CellObject & { l?: { Target?: string } }) | null
+  return cellText(cell?.l?.Target)
 }
 
 function getRowValues(sheet: XLSX.WorkSheet, rowIndex: number, maxColumn: number) {
@@ -178,6 +191,10 @@ function parseBlockSheet(sheetName: string, sheet: XLSX.WorkSheet): ParsedWorkbo
     const pick = (headerKey: keyof BlockExerciseTemplateInput) => {
       const index = currentHeaders[headerKey]
       if (index == null || index >= values.length) return ''
+      if (headerKey === 'video_url') {
+        const hyperlinkTarget = getCellHyperlinkTarget(sheet, rowIndex, index + 1)
+        return normalizeExternalUrl(hyperlinkTarget || values[index]) ?? ''
+      }
       return values[index]
     }
 
