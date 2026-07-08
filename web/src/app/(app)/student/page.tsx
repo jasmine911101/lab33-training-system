@@ -1,7 +1,7 @@
 import { AppShell } from '@/components/layout/app-shell'
 import { PasswordUpdateForm } from '@/components/auth/password-update-form'
 import { ProfileStatusCard } from '@/components/auth/profile-status-card'
-import { StudentReportSchedule } from '@/components/schedule/student-report-schedule'
+import { StudentCalendarPreview } from '@/components/schedule/student-report-schedule'
 import { requireStudentAccess } from '@/lib/auth/roles'
 import { getAthleteScheduleBundle } from '@/services/schedule'
 
@@ -57,56 +57,61 @@ export default async function StudentHomePage() {
   return (
     <AppShell
       title="Student Dashboard"
-      description="目前保留現有身份與基本資料邏輯，並搬移自己的課表、一般事件與學員回報。這一階段先不搬 Calendar 互動。"
+      description="查看自己的課表、一般事件與回報內容。"
       role="student"
       userEmail={context.user.email}
       roleLabel="學員"
       currentPath="/student"
+      hideHeaderCard
     >
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <article className="lab-stat-card">
-          <p className="lab-eyebrow">Profile</p>
-          <p className="mt-3 font-display text-4xl leading-none text-slate-900">{studentProfile.name ?? 'Athlete'}</p>
-        </article>
-        <article className="lab-stat-card">
-          <p className="lab-eyebrow">Sport</p>
-          <p className="mt-3 text-lg font-semibold text-slate-900">{studentProfile.sport ?? '-'}</p>
-        </article>
-        <article className="lab-stat-card">
-          <p className="lab-eyebrow">Assignments</p>
-          <p className="mt-3 text-lg font-semibold text-slate-900">{schedule.assignments.length} 筆</p>
-        </article>
-        <article className="lab-stat-card">
-          <p className="lab-eyebrow">Events</p>
-          <p className="mt-3 text-lg font-semibold text-slate-900">{schedule.generalEvents.length} 筆</p>
-        </article>
-      </section>
+      <section className="lab-card p-6 sm:p-7">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="lab-eyebrow">Logged In Experience</p>
+            <h2 className="lab-section-title mt-3">{studentProfile.name ?? 'Athlete Dashboard'}</h2>
+            <p className="lab-copy mt-3">以行事曆查看自己的課表與一般事件，並直接回報實際訓練狀況。</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="lab-badge-info">{studentProfile.must_change_password ? '需更新密碼' : '可正常登入'}</span>
+            <span className="lab-badge bg-slate-100 text-slate-700">{studentProfile.email ?? context.user.email ?? '-'}</span>
+          </div>
+        </div>
 
-      <section className="mt-6 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <article className="lab-card p-6 sm:p-7">
-          <p className="lab-eyebrow">Athlete Profile</p>
-          <h2 className="lab-section-title mt-3">目前登入學員</h2>
-          <p className="lab-copy mt-3">
-            這裡沿用現有 Supabase Auth 帳號，自動對應 `athletes` 中的資料，不變更任何資料結構。
-          </p>
-          <dl className="mt-6 space-y-3 text-sm text-slate-600">
-            <div className="flex justify-between gap-4"><dt>姓名</dt><dd className="font-semibold text-slate-900">{studentProfile.name ?? '-'}</dd></div>
-            <div className="flex justify-between gap-4"><dt>Email</dt><dd className="font-semibold text-slate-900">{studentProfile.email ?? context.user.email ?? '-'}</dd></div>
-            <div className="flex justify-between gap-4"><dt>學員 ID</dt><dd className="font-semibold text-slate-900">{studentProfile.id}</dd></div>
-            <div className="flex justify-between gap-4"><dt>運動項目</dt><dd className="font-semibold text-slate-900">{studentProfile.sport ?? '-'}</dd></div>
-            <div className="flex justify-between gap-4"><dt>程度</dt><dd className="font-semibold text-slate-900">{studentProfile.level ?? '-'}</dd></div>
-          </dl>
-        </article>
-
-        <PasswordUpdateForm
-          title="修改密碼"
-          description="需要時再打開修改。更新成功後，下次請使用新密碼登入。"
-          successMessage="密碼已更新。下次請使用新密碼登入。"
-        />
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <article className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4">
+            <p className="lab-eyebrow">Email</p>
+            <p className="mt-3 text-sm font-semibold text-slate-900 break-all">{studentProfile.email ?? context.user.email ?? '-'}</p>
+          </article>
+          <article className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4">
+            <p className="lab-eyebrow">Sport</p>
+            <p className="mt-3 text-sm font-semibold text-slate-900">{studentProfile.sport ?? '-'}</p>
+          </article>
+          <article className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4">
+            <p className="lab-eyebrow">Assignments</p>
+            <p className="mt-3 text-sm font-semibold text-slate-900">{schedule.assignments.length} 筆</p>
+          </article>
+          <article className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4">
+            <p className="lab-eyebrow">Events</p>
+            <p className="mt-3 text-sm font-semibold text-slate-900">{schedule.generalEvents.length} 筆</p>
+          </article>
+        </div>
       </section>
 
       <section className="mt-6">
-        <StudentReportSchedule schedule={schedule} emptyMessage="目前還沒有被安排任何課表或一般事件。" />
+        <StudentCalendarPreview schedule={schedule} href="/student/calendar" />
+      </section>
+
+      <section className="mt-6">
+        <div className="lab-card p-5 sm:p-6">
+          <PasswordUpdateForm
+            title="修改密碼"
+            description="需要時再打開修改。更新成功後，下次請使用新密碼登入。"
+            successMessage="密碼已更新。下次請使用新密碼登入。"
+            collapsible
+            defaultOpen={false}
+            surface="plain"
+          />
+        </div>
       </section>
     </AppShell>
   )

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 
 import { requireStudentAccess } from '@/lib/auth/roles'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
 function text(value: unknown) {
@@ -12,17 +11,8 @@ function text(value: unknown) {
 
 function buildPayload(row: Record<string, unknown>) {
   return {
-    exercise_name: text(row.exercise_name),
-    sets: text(row.sets),
-    reps_or_time: text(row.reps_or_time),
-    equipment: text(row.equipment),
-    intensity: text(row.intensity),
-    weight: text(row.weight),
     actual_sets: text(row.actual_sets),
     actual_weight: text(row.actual_weight),
-    rest: text(row.rest),
-    video_url: text(row.video_url),
-    notes: text(row.notes),
   }
 }
 
@@ -35,11 +25,6 @@ export async function POST(
 
   if (!studentProfile) {
     return NextResponse.json({ error: '找不到目前登入學員。' }, { status: 403 })
-  }
-
-  const admin = createAdminClient()
-  if (!admin) {
-    return NextResponse.json({ error: '尚未設定 SUPABASE_SERVICE_ROLE_KEY，無法儲存學員回報。' }, { status: 500 })
   }
 
   const { assignmentId } = await params
@@ -90,7 +75,7 @@ export async function POST(
       return NextResponse.json({ error: '回報內容包含無效的動作列。' }, { status: 400 })
     }
 
-    const { error: updateError } = await admin
+    const { error: updateError } = await sessionSupabase
       .from('athlete_block_exercises')
       .update(buildPayload(row as Record<string, unknown>))
       .eq('id', rowId)

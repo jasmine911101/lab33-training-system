@@ -367,7 +367,7 @@ function buildEditableSections(assignment: AssignmentDetail): EditableSection[] 
 function ExerciseReadTable({ rows }: { rows: AssignmentDetail['sections'][number]['rows'] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-[920px] w-full border-separate border-spacing-0 text-sm">
+      <table className="min-w-[1100px] w-full border-separate border-spacing-0 text-sm">
         <thead>
           <tr className="text-left">
             <th className="rounded-tl-2xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700">動作名稱</th>
@@ -382,12 +382,28 @@ function ExerciseReadTable({ rows }: { rows: AssignmentDetail['sections'][number
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={`${row.id || row.exercise_name}-${index}`} className="bg-white">
+            <tr key={`${row.id || row.exercise_name}-${index}`} className={row.actual_sets || row.actual_weight ? 'bg-emerald-50/70' : 'bg-white'}>
               <td className="border border-slate-200 px-4 py-3 font-medium text-slate-900">{row.exercise_name || '-'}</td>
-              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.sets || '-'}</td>
+              <td className={`border border-slate-200 px-4 py-3 ${row.actual_sets ? 'bg-emerald-50/70' : 'text-slate-600'}`}>
+                <div className="text-slate-700">{row.sets || '-'}</div>
+                {row.actual_sets ? (
+                  <div className="mt-1 text-xs font-semibold text-emerald-700">
+                    回報：{row.actual_sets}
+                    {row.actual_sets !== row.sets ? <span className="ml-2 text-sky-700">與安排不同</span> : null}
+                  </div>
+                ) : null}
+              </td>
               <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.reps_or_time || '-'}</td>
               <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.intensity || '-'}</td>
-              <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.weight || '-'}</td>
+              <td className={`border border-slate-200 px-4 py-3 ${row.actual_weight ? 'bg-emerald-50/70' : 'text-slate-600'}`}>
+                <div className="text-slate-700">{row.weight || '-'}</div>
+                {row.actual_weight ? (
+                  <div className="mt-1 text-xs font-semibold text-emerald-700">
+                    回報：{row.actual_weight}
+                    {row.actual_weight !== row.weight ? <span className="ml-2 text-sky-700">與安排不同</span> : null}
+                  </div>
+                ) : null}
+              </td>
               <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.rest || '-'}</td>
               <td className="border border-slate-200 px-4 py-3 text-slate-600">{row.equipment || '-'}</td>
               <td className="border border-slate-200 px-4 py-3 text-slate-600">
