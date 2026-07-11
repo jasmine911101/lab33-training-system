@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { GENERAL_EVENT_TYPES, TRAINING_CATEGORIES } from '@/lib/types/schedule-management'
 import { getTaxonomySelectionSnapshot } from '@/services/block-taxonomy'
-import { getAccessibleManagedAthleteForCoach } from '@/services/coach-management'
+import { getAccessibleManagedAthleteForCoach, getAssignableCoachDirectory } from '@/services/coach-management'
 import type { CoachProfile } from '@/services/coach'
 import { getAthleteScheduleBundle, getBlockCatalog, type AssignmentDetail, type BlockRecord, type GeneralEventDetail } from '@/services/schedule'
 
@@ -527,14 +527,22 @@ export async function deleteGeneralEventForAthlete(coach: CoachProfile, athleteI
 }
 
 export async function getCoachSchedulingPageData(coach: CoachProfile, athleteId: number) {
-  const athlete = await ensureCoachCanManageAthlete(coach, athleteId)
-  if (!athlete) {
+  const managedAthlete = await ensureCoachCanManageAthlete(coach, athleteId)
+  if (!managedAthlete) {
     return null
   }
 
-  const [schedule, blocks, taxonomy] = await Promise.all([refreshSchedule(athleteId), getBlockCatalog(), getTaxonomySelectionSnapshot()])
+  const [blocks, taxonomy, assignableCoaches] = await Promise.all([
+    getBlockCatalog(),
+    getTaxonomySelectionSnapshot(),
+    getAssignableCoachDirectory(),
+  ])
+  const schedule = await getAthleteScheduleBundle(athleteId, { blocks })
+
   return {
-    athlete,
+    athlete: managedAthlete,
+    managedAthlete,
+    assignableCoaches,
     schedule,
     blocks,
     taxonomy,

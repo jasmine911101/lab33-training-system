@@ -4,7 +4,7 @@ import { ProfileStatusCard } from '@/components/auth/profile-status-card'
 import { StudentCalendarPreview } from '@/components/schedule/student-report-schedule'
 import { StudentDashboardHeader } from '@/components/student/student-dashboard-header'
 import { requireStudentAccess } from '@/lib/auth/roles'
-import { getAthleteScheduleBundle } from '@/services/schedule'
+import { getStudentDashboardSummary } from '@/services/schedule'
 
 export default async function StudentHomePage() {
   const context = await requireStudentAccess('/student/login')
@@ -53,7 +53,7 @@ export default async function StudentHomePage() {
     )
   }
 
-  const schedule = await getAthleteScheduleBundle(studentProfile.id)
+  const summary = await getStudentDashboardSummary(studentProfile.id)
 
   return (
     <AppShell
@@ -74,7 +74,7 @@ export default async function StudentHomePage() {
       />
 
       <section className="mt-6">
-        <StudentCalendarPreview schedule={schedule} href="/student/calendar" />
+        <StudentCalendarPreview summary={summary} href="/student/calendar" />
       </section>
     </AppShell>
   )

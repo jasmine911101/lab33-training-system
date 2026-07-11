@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { GENERAL_EVENT_TYPES } from '@/lib/types/schedule-management'
 import { normalizeExternalUrl } from '@/lib/external-url'
-import type { AthleteScheduleBundle, AssignmentDetail, ExerciseRow, GeneralEventDetail } from '@/services/schedule'
+import type { AthleteScheduleBundle, AssignmentDetail, ExerciseRow, GeneralEventDetail, StudentDashboardSummary } from '@/services/schedule'
 
 type ScheduleItem =
   | { kind: 'assignment'; id: string; recordId: number; startDate: string; endDate: string; previewTop: string; previewBottom: string }
@@ -24,7 +24,7 @@ type StudentReportScheduleProps = {
 }
 
 type StudentCalendarPreviewProps = {
-  schedule: AthleteScheduleBundle
+  summary: StudentDashboardSummary
   href: string
 }
 
@@ -61,10 +61,6 @@ function formatMonthLabel(isoMonth: string) {
 
 function rangeIncludes(date: string, startDate: string, endDate: string) {
   return date >= startDate && date <= endDate
-}
-
-function rangeOverlaps(startDate: string, endDate: string, rangeStart: string, rangeEnd: string) {
-  return startDate <= rangeEnd && endDate >= rangeStart
 }
 
 function truncateText(value: string, maxLength: number) {
@@ -830,42 +826,14 @@ function CalendarMonthGrid({
   )
 }
 
-export function StudentCalendarPreview({ schedule, href }: StudentCalendarPreviewProps) {
+export function StudentCalendarPreview({ summary, href }: StudentCalendarPreviewProps) {
   const initialDate = todayIso()
   const visibleMonth = initialDate.slice(0, 7)
   const monthLabel = formatMonthLabel(visibleMonth)
-  const monthStart = `${visibleMonth}-01`
-  const monthEndDate = new Date(`${visibleMonth}-01T00:00:00`)
-  monthEndDate.setMonth(monthEndDate.getMonth() + 1, 0)
-  const monthEnd = `${monthEndDate.getFullYear()}-${padMonth(monthEndDate.getMonth() + 1)}-${padMonth(monthEndDate.getDate())}`
-
-  const monthlyAssignmentCount = schedule.assignments.filter((assignment) =>
-    rangeOverlaps(
-      assignment.start_date || monthStart,
-      assignment.end_date || assignment.start_date || monthStart,
-      monthStart,
-      monthEnd,
-    ),
-  ).length
-
-  const monthlyEventCount = schedule.generalEvents.filter((event) =>
-    rangeOverlaps(
-      event.start_date || monthStart,
-      event.end_date || event.start_date || monthStart,
-      monthStart,
-      monthEnd,
-    ),
-  ).length
-
-  const nextAssignment =
-    [...schedule.assignments]
-      .filter((assignment) => (assignment.end_date || assignment.start_date || '') >= initialDate)
-      .sort((left, right) => (left.start_date || '').localeCompare(right.start_date || ''))[0] ?? null
-
-  const nextEvent =
-    [...schedule.generalEvents]
-      .filter((event) => (event.end_date || event.start_date || '') >= initialDate)
-      .sort((left, right) => (left.start_date || '').localeCompare(right.start_date || ''))[0] ?? null
+  const monthlyAssignmentCount = summary.monthlyAssignmentCount
+  const monthlyEventCount = summary.monthlyEventCount
+  const nextAssignment = summary.nextAssignment
+  const nextEvent = summary.nextEvent
 
   return (
     <article className="lab-card p-6 sm:p-7">

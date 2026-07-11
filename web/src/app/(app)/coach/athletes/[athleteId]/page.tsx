@@ -5,7 +5,6 @@ import { CoachAthleteDetailAdmin } from '@/components/coach/coach-athlete-detail
 import { CoachScheduleManager } from '@/components/coach/coach-schedule-manager'
 import { requireCoachAccess } from '@/lib/auth/roles'
 import { getCoachSchedulingPageData } from '@/services/coach-schedule-management'
-import { getAccessibleManagedAthleteForCoach, getCoachManagementSnapshot } from '@/services/coach-management'
 
 export default async function CoachAthleteDetailPage({ params }: { params: Promise<{ athleteId: string }> }) {
   const { athleteId } = await params
@@ -17,16 +16,12 @@ export default async function CoachAthleteDetailPage({ params }: { params: Promi
     notFound()
   }
 
-  const [pageData, managedAthlete, managementSnapshot] = await Promise.all([
-    getCoachSchedulingPageData(coachProfile, parsedAthleteId),
-    getAccessibleManagedAthleteForCoach(coachProfile, parsedAthleteId),
-    getCoachManagementSnapshot(coachProfile),
-  ])
-  if (!pageData || !managedAthlete) {
+  const pageData = await getCoachSchedulingPageData(coachProfile, parsedAthleteId)
+  if (!pageData) {
     notFound()
   }
 
-  const { athlete, schedule, blocks, taxonomy } = pageData
+  const { athlete, managedAthlete, assignableCoaches, schedule, blocks, taxonomy } = pageData
 
   return (
     <div className="space-y-6">
@@ -43,7 +38,7 @@ export default async function CoachAthleteDetailPage({ params }: { params: Promi
 
       <CoachAthleteDetailAdmin
         initialAthlete={managedAthlete}
-        assignableCoaches={managementSnapshot.assignableCoaches}
+        assignableCoaches={assignableCoaches}
         isHeadCoach={coachProfile.is_head_coach === true}
       />
 

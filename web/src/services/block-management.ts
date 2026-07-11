@@ -76,8 +76,25 @@ async function fetchBlockRowsByCategory(
   options?: {
     trainingCategoryId?: number
     uncategorizedOnly?: boolean
+    blockIds?: number[]
   },
 ) {
+  if (options?.blockIds && options.blockIds.length === 0) {
+    return [] as BlockRow[]
+  }
+
+  if (options?.blockIds && options.blockIds.length > 0) {
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('blocks')
+      .select('id, block_code, block_name, goal, training_element, description, training_category_id')
+      .in('id', options.blockIds)
+      .order('id', { ascending: true })
+
+    if (error) throw error
+    return (data ?? []) as BlockRow[]
+  }
+
   if (options?.uncategorizedOnly || typeof options?.trainingCategoryId === 'number') {
     const supabase = await createClient()
     let query = supabase
@@ -125,27 +142,43 @@ async function fetchBlockRowsByCategory(
   })) as BlockRow[]
 }
 
-async function fetchBlockSections() {
+async function fetchBlockSections(blockIds?: number[]) {
+  if (blockIds && blockIds.length === 0) return [] as BlockSectionRow[]
+
   const supabase = await createClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from('block_sections')
     .select('id, block_id, section_name, order_num')
     .order('block_id', { ascending: true })
     .order('order_num', { ascending: true })
     .order('id', { ascending: true })
 
+  if (blockIds && blockIds.length > 0) {
+    query = query.in('block_id', blockIds)
+  }
+
+  const { data, error } = await query
+
   if (error) throw error
   return (data ?? []) as BlockSectionRow[]
 }
 
-async function fetchBlockExercises() {
+async function fetchBlockExercises(blockIds?: number[]) {
+  if (blockIds && blockIds.length === 0) return [] as BlockExerciseRow[]
+
   const supabase = await createClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from('block_exercises')
     .select('id, block_id, section_id, exercise_name, sets, reps_or_time, equipment, intensity, weight, rest, video_url, notes, order_num')
     .order('block_id', { ascending: true })
     .order('order_num', { ascending: true })
     .order('id', { ascending: true })
+
+  if (blockIds && blockIds.length > 0) {
+    query = query.in('block_id', blockIds)
+  }
+
+  const { data, error } = await query
 
   if (error) throw error
   return (data ?? []) as BlockExerciseRow[]
@@ -281,7 +314,7 @@ function sanitizeSections(payload: BlockTemplatePayload) {
 }
 
 async function getBlockSnapshotById(blockId: number) {
-  const snapshot = await getBlockManagementSnapshot()
+  const snapshot = await getBlockManagementSnapshot({ blockIds: [blockId] })
   return snapshot.blocks.find((block) => block.id === blockId) ?? null
 }
 
@@ -345,11 +378,12 @@ async function writeTemplateSectionsAndExercises(
   return { error: null, exerciseCount }
 }
 
-export async function getBlockManagementSnapshot(options?: { trainingCategoryId?: number; uncategorizedOnly?: boolean }) {
-  const [blocks, sections, exercises] = await Promise.all([
-    fetchBlockRowsByCategory(options),
-    fetchBlockSections(),
-    fetchBlockExercises(),
+export async function getBlockManagementSnapshot(options?: { trainingCategoryId?: number; uncategorizedOnly?: boolean; blockIds?: number[] }) {
+  const blocks = await fetchBlockRowsByCategory(options)
+  const blockIds = blocks.map((block) => block.id)
+  const [sections, exercises] = await Promise.all([
+    fetchBlockSections(blockIds),
+    fetchBlockExercises(blockIds),
   ])
 
   return {

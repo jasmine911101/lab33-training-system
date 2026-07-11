@@ -107,6 +107,13 @@ export type AthleteScheduleBundle = {
   generalEvents: GeneralEventDetail[]
 }
 
+export type StudentDashboardSummary = {
+  monthlyAssignmentCount: number
+  monthlyEventCount: number
+  nextAssignment: AssignmentDetail | null
+  nextEvent: GeneralEventDetail | null
+}
+
 type BlockSectionRecord = {
   id: number
   block_id: number
@@ -184,6 +191,18 @@ function athleteEventTitle(row: Partial<AthleteEventRecord>) {
   return text(row.title) || text(row.event_type) || '一般事件'
 }
 
+function padMonth(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function rangeOverlaps(startDate: string, endDate: string, rangeStart: string, rangeEnd: string) {
+  return startDate <= rangeEnd && endDate >= rangeStart
+}
+
 async function getScheduleReadClient() {
   const admin = createAdminClient()
   if (admin) {
@@ -199,6 +218,22 @@ async function fetchBlocks() {
     .from('blocks')
     .select('id, block_code, block_name, goal, training_element, description, training_category_id')
     .order('id', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []) as BlockRecord[]
+}
+
+async function fetchBlocksByIds(blockIds: number[]) {
+  const normalizedIds = Array.from(new Set(blockIds.filter((value) => Number.isFinite(value))))
+  if (normalizedIds.length === 0) {
+    return [] as BlockRecord[]
+  }
+
+  const supabase = await getScheduleReadClient()
+  const { data, error } = await supabase
+    .from('blocks')
+    .select('id, block_code, block_name, goal, training_element, description, training_category_id')
+    .in('id', normalizedIds)
 
   if (error) throw error
   return (data ?? []) as BlockRecord[]
@@ -478,12 +513,20 @@ export async function getBlockCatalog() {
   return await fetchBlocks()
 }
 
-export async function getAthleteScheduleBundle(athleteId: number): Promise<AthleteScheduleBundle> {
-  const [blocks, athleteBlocks, athleteEvents] = await Promise.all([
-    fetchBlocks(),
+export async function getAthleteScheduleBundle(
+  athleteId: number,
+  options?: { blocks?: BlockRecord[] },
+): Promise<AthleteScheduleBundle> {
+  const [athleteBlocks, athleteEvents] = await Promise.all([
     fetchAthleteBlocks(athleteId),
     fetchAthleteEvents(athleteId),
   ])
+
+  const blocks =
+    options?.blocks ??
+    (await fetchBlocksByIds(
+      athleteBlocks.map((row) => Number(row.block_id)).filter((value) => Number.isFinite(value)),
+    ))
 
   const blocksById = new Map<number, BlockRecord>(blocks.map((block) => [block.id, block]))
   const taxonomyNameById = await fetchTrainingCategoryNames(
@@ -495,5 +538,66 @@ export async function getAthleteScheduleBundle(athleteId: number): Promise<Athle
   return {
     assignments,
     generalEvents,
+  }
+}
+
+export async function getStudentDashboardSummary(athleteId: number): Promise<StudentDashboardSummary> {
+  const initialDate = todayIso()
+  const visibleMonth = initialDate.slice(0, 7)
+  const monthStart = `${visibleMonth}-01`
+  const monthEndDate = new Date(`${visibleMonth}-01T00:00:00`)
+  monthEndDate.setMonth(monthEndDate.getMonth() + 1, 0)
+  const monthEnd = `${monthEndDate.getFullYear()}-${padMonth(monthEndDate.getMonth() + 1)}-${padMonth(monthEndDate.getDate())}`
+
+  const [athleteBlocks, athleteEvents] = await Promise.all([
+    fetchAthleteBlocks(athleteId),
+    fetchAthleteEvents(athleteId),
+  ])
+
+  const monthlyAssignmentCount = athleteBlocks.filter((assignment) =>
+    rangeOverlaps(
+      assignment.start_date || assignment.scheduled_date || monthStart,
+      assignment.end_date || assignment.start_date || assignment.scheduled_date || monthStart,
+      monthStart,
+      monthEnd,
+    ),
+  ).length
+
+  const monthlyEventCount = athleteEvents.filter((event) =>
+    rangeOverlaps(
+      event.start_date || monthStart,
+      event.end_date || event.start_date || monthStart,
+      monthStart,
+      monthEnd,
+    ),
+  ).length
+
+  const nextAssignmentRow =
+    [...athleteBlocks]
+      .filter((assignment) => (assignment.end_date || assignment.start_date || assignment.scheduled_date || '') >= initialDate)
+      .sort((left, right) => (left.start_date || left.scheduled_date || '').localeCompare(right.start_date || right.scheduled_date || ''))[0] ?? null
+
+  const nextEventRow =
+    [...athleteEvents]
+      .filter((event) => (event.end_date || event.start_date || '') >= initialDate)
+      .sort((left, right) => (left.start_date || '').localeCompare(right.start_date || ''))[0] ?? null
+
+  let nextAssignment: AssignmentDetail | null = null
+  if (nextAssignmentRow) {
+    const blocks = await fetchBlocksByIds(
+      [Number(nextAssignmentRow.block_id)].filter((value) => Number.isFinite(value)),
+    )
+    const blocksById = new Map<number, BlockRecord>(blocks.map((block) => [block.id, block]))
+    const taxonomyNameById = await fetchTrainingCategoryNames(
+      blocks.map((block) => Number(block.training_category_id)).filter((value) => Number.isFinite(value)),
+    )
+    nextAssignment = await buildAssignmentDetail(nextAssignmentRow, blocksById, taxonomyNameById)
+  }
+
+  return {
+    monthlyAssignmentCount,
+    monthlyEventCount,
+    nextAssignment,
+    nextEvent: nextEventRow ? buildGeneralEventDetail(nextEventRow) : null,
   }
 }
