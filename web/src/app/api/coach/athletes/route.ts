@@ -32,6 +32,5 @@ export async function POST(request: Request) {
   return NextResponse.json({
     athlete: result.data,
     message: result.message,
-    tempPassword: result.tempPassword,
   })
 }

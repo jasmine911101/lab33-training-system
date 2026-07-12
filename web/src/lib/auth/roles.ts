@@ -1,11 +1,12 @@
 import type { User } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 
+import { getAuthProviderForUser, isGoogleAuthUser, type AuthProvider } from '@/lib/auth/provider'
 import { requireSession } from '@/lib/auth/session'
 import { getCoachProfileForUser, type CoachProfile } from '@/services/coach'
 import { getStudentProfileForUser, type StudentProfile } from '@/services/student'
 
-export type AppRole = 'coach' | 'student' | 'unknown'
+export type AppRole = 'coach' | 'student' | 'unknown' | 'conflict'
 
 export type AppContext = {
   user: User
@@ -14,6 +15,8 @@ export type AppContext = {
   studentProfile: StudentProfile | null
   hasCoachAccess: boolean
   hasStudentAccess: boolean
+  authProvider: AuthProvider
+  isGoogleSession: boolean
 }
 
 export async function getAppContextForUser(user: User): Promise<AppContext> {
@@ -24,10 +27,12 @@ export async function getAppContextForUser(user: User): Promise<AppContext> {
 
   const hasCoachAccess = Boolean(coachProfile)
   const hasStudentAccess = Boolean(studentProfile)
+  const authProvider = getAuthProviderForUser(user)
 
   let role: AppRole = 'unknown'
   if (hasCoachAccess && !hasStudentAccess) role = 'coach'
   if (!hasCoachAccess && hasStudentAccess) role = 'student'
+  if (hasCoachAccess && hasStudentAccess) role = 'conflict'
 
   return {
     user,
@@ -36,6 +41,8 @@ export async function getAppContextForUser(user: User): Promise<AppContext> {
     studentProfile,
     hasCoachAccess,
     hasStudentAccess,
+    authProvider,
+    isGoogleSession: isGoogleAuthUser(user),
   }
 }
 
@@ -50,6 +57,7 @@ export async function detectAppRole(userId: string, email?: string | null): Prom
 
   if (hasCoachAccess && !hasStudentAccess) return 'coach'
   if (!hasCoachAccess && hasStudentAccess) return 'student'
+  if (hasCoachAccess && hasStudentAccess) return 'conflict'
   return 'unknown'
 }
 
@@ -57,7 +65,7 @@ export async function requireCoachAccess(loginPath: string) {
   const user = await requireSession(loginPath)
   const context = await getAppContextForUser(user)
 
-  if (context.hasCoachAccess) {
+  if (context.role === 'coach' && context.hasCoachAccess) {
     return context
   }
 
@@ -68,7 +76,7 @@ export async function requireStudentAccess(loginPath: string) {
   const user = await requireSession(loginPath)
   const context = await getAppContextForUser(user)
 
-  if (context.hasStudentAccess) {
+  if (context.role === 'student' && context.hasStudentAccess) {
     return context
   }
 

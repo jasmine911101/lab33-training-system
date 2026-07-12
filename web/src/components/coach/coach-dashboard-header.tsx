@@ -10,6 +10,7 @@ type CoachDashboardHeaderProps = {
   userEmail?: string | null
   coachName?: string | null
   createAthleteSlot?: React.ReactNode
+  allowPasswordManagement?: boolean
 }
 
 function SummaryStat({ label, value }: { label: string; value: string | number }) {
@@ -21,7 +22,14 @@ function SummaryStat({ label, value }: { label: string; value: string | number }
   )
 }
 
-export function CoachDashboardHeader({ roleLabel, athleteCount, userEmail, coachName, createAthleteSlot }: CoachDashboardHeaderProps) {
+export function CoachDashboardHeader({
+  roleLabel,
+  athleteCount,
+  userEmail,
+  coachName,
+  createAthleteSlot,
+  allowPasswordManagement = true,
+}: CoachDashboardHeaderProps) {
   const [isPasswordOpen, setIsPasswordOpen] = useState(false)
   const [isProfileOpen, setIsProfileOpen] = useState(false)
 
@@ -48,13 +56,15 @@ export function CoachDashboardHeader({ roleLabel, athleteCount, userEmail, coach
               >
                 教練資料
               </button>
-              <button
-                type="button"
-                className="lab-btn-secondary !min-h-11 min-w-[8.5rem] border-slate-200 bg-slate-50 px-5 py-2.5 text-sm font-bold shadow-none"
-                onClick={() => setIsPasswordOpen(true)}
-              >
-                修改密碼
-              </button>
+              {allowPasswordManagement ? (
+                <button
+                  type="button"
+                  className="lab-btn-secondary !min-h-11 min-w-[8.5rem] border-slate-200 bg-slate-50 px-5 py-2.5 text-sm font-bold shadow-none"
+                  onClick={() => setIsPasswordOpen(true)}
+                >
+                  修改密碼
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -108,7 +118,7 @@ export function CoachDashboardHeader({ roleLabel, athleteCount, userEmail, coach
         </div>
       ) : null}
 
-      {isPasswordOpen ? (
+      {allowPasswordManagement && isPasswordOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/28 p-4 backdrop-blur-sm">
           <div className="w-full max-w-xl rounded-[1.5rem] bg-white p-5 shadow-[0_28px_64px_rgba(15,23,42,0.2)] sm:p-6">
             <div className="mb-5 flex items-start justify-between gap-4">

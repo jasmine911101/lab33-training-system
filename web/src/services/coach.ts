@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server'
-import { serverEnv } from '@/lib/env.server'
 
 export type CoachProfile = {
   id: number
@@ -7,38 +6,6 @@ export type CoachProfile = {
   name: string | null
   email: string | null
   is_head_coach: boolean | null
-}
-
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase()
-}
-
-function buildFallbackCoachProfile(userId: string, email: string): CoachProfile | null {
-  const normalizedEmail = normalizeEmail(email)
-  const headCoachEmailSet = new Set(serverEnv.headCoachEmails)
-  const coachEmailSet = new Set(serverEnv.coachEmails)
-
-  if (headCoachEmailSet.has(normalizedEmail)) {
-    return {
-      id: -1,
-      user_id: userId,
-      name: normalizedEmail.split('@')[0] || normalizedEmail,
-      email: normalizedEmail,
-      is_head_coach: true,
-    }
-  }
-
-  if (coachEmailSet.has(normalizedEmail)) {
-    return {
-      id: -1,
-      user_id: userId,
-      name: normalizedEmail.split('@')[0] || normalizedEmail,
-      email: normalizedEmail,
-      is_head_coach: false,
-    }
-  }
-
-  return null
 }
 
 export type ManagedAthlete = {
@@ -83,7 +50,6 @@ export async function getCoachProfileForUser(userId: string, email?: string | nu
   if (email) {
     const coachByEmail = await findCoachByEmail(email)
     if (coachByEmail) return coachByEmail
-    return buildFallbackCoachProfile(userId, email)
   }
 
   return null

@@ -14,6 +14,10 @@ type AthleteBlockLookup = {
   id: number
 }
 
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase()
+}
+
 async function fetchAthleteBlocksForLookup(athleteId: number) {
   const supabase = await createClient()
   const { data, error } = await supabase
@@ -43,7 +47,7 @@ async function findStudentRowsByEmail(email: string) {
   const { data, error } = await supabase
     .from('athletes')
     .select('id, user_id, name, email, sport, level, must_change_password')
-    .eq('email', email)
+    .eq('email', normalizeEmail(email))
     .order('id', { ascending: true })
 
   if (error) throw error

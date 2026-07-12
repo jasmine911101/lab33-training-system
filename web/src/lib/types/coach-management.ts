@@ -4,6 +4,11 @@ export type CoachDirectoryEntry = {
   name: string | null
   email: string | null
   is_head_coach: boolean | null
+  created_at?: string | null
+}
+
+export type ManagedCoachRecord = CoachDirectoryEntry & {
+  managedAthleteCount: number
 }
 
 export type CoachAssignmentBadge = {
@@ -28,6 +33,7 @@ export type ManagedAthleteRecord = {
 export type CoachManagementSnapshot = {
   athletes: ManagedAthleteRecord[]
   assignableCoaches: CoachDirectoryEntry[]
+  coaches: ManagedCoachRecord[]
 }
 
 export function coachDisplayName(coach: Pick<CoachDirectoryEntry, 'id' | 'name' | 'email'>) {
@@ -100,4 +106,23 @@ export function rankAthletesBySearch(athletes: ManagedAthleteRecord[], query: st
     .sort((left, right) => right.score - left.score)
 
   return ranked.map((entry) => entry.athlete)
+}
+
+export function rankCoachesBySearch(coaches: ManagedCoachRecord[], query: string) {
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) {
+    return coaches
+  }
+
+  const ranked = coaches
+    .map((coach) => {
+      let score = 0
+      score += scoreSearchText(coach.name, normalizedQuery, 240, 180, 140, 100)
+      score += scoreSearchText(coach.email, normalizedQuery, 220, 160, 120, 90)
+      return { coach, score }
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score)
+
+  return ranked.map((entry) => entry.coach)
 }

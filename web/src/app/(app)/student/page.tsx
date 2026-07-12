@@ -30,7 +30,9 @@ export default async function StudentHomePage() {
     )
   }
 
-  if (studentProfile.must_change_password) {
+  const requiresPasswordReset = Boolean(studentProfile.must_change_password) && !context.isGoogleSession
+
+  if (requiresPasswordReset) {
     return (
       <AppShell
         title="請設定新密碼"
@@ -70,7 +72,8 @@ export default async function StudentHomePage() {
         studentName={studentProfile.name ?? null}
         userEmail={studentProfile.email ?? context.user.email ?? null}
         sport={studentProfile.sport ?? null}
-        mustChangePassword={Boolean(studentProfile.must_change_password)}
+        mustChangePassword={requiresPasswordReset}
+        allowPasswordManagement={!context.isGoogleSession}
       />
 
       <section className="mt-6">

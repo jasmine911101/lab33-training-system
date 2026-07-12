@@ -2,22 +2,35 @@ import { redirect } from 'next/navigation'
 
 import { CoachRegistrationForm } from '@/components/auth/coach-registration-form'
 import { LoginForm } from '@/components/auth/login-form'
+import { getOAuthErrorMessage } from '@/lib/auth/oauth-errors'
 import { getAppContextForUser } from '@/lib/auth/roles'
 import { getAuthenticatedUser } from '@/lib/auth/session'
 import { getCoachRegistrationAvailability } from '@/services/coach-auth'
 
-export default async function CoachLoginPage() {
+export default async function CoachLoginPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
   const user = await getAuthenticatedUser()
 
   if (user) {
     const context = await getAppContextForUser(user)
-    if (context.hasCoachAccess) {
+    if (context.role === 'coach' && context.hasCoachAccess) {
       redirect('/coach')
     }
-    if (context.hasStudentAccess) {
+    if (context.role === 'student' && context.hasStudentAccess) {
       redirect('/student')
     }
   }
+
+  const resolvedSearchParams = (await searchParams) ?? {}
+  const oauthErrorParam = Array.isArray(resolvedSearchParams.oauth_error)
+    ? resolvedSearchParams.oauth_error[0]
+    : resolvedSearchParams.oauth_error
+  const oauthMessageParam = Array.isArray(resolvedSearchParams.oauth_message)
+    ? resolvedSearchParams.oauth_message[0]
+    : resolvedSearchParams.oauth_message
 
   const registration = getCoachRegistrationAvailability()
 
@@ -35,7 +48,10 @@ export default async function CoachLoginPage() {
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">登入</p>
             <div className="mt-3">
-              <LoginForm mode="coach" />
+              <LoginForm
+                mode="coach"
+                initialError={oauthMessageParam ?? getOAuthErrorMessage(oauthErrorParam) ?? null}
+              />
             </div>
           </div>
           <div>

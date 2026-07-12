@@ -9,6 +9,7 @@ import {
   type CoachDirectoryEntry,
   type CoachManagementSnapshot,
   type ManagedAthleteRecord,
+  type ManagedCoachRecord,
 } from '@/lib/types/coach-management'
 import type { CoachProfile } from '@/services/coach'
 
@@ -38,6 +39,11 @@ type AdminMutationResult<T> = {
   tempPassword?: string
 }
 
+type CoachDeleteResult = {
+  coachId: number
+  unassignedAthleteCount: number
+}
+
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
 }
@@ -52,12 +58,22 @@ async function fetchCoachDirectory() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('coaches')
-    .select('id, user_id, name, email, is_head_coach')
+    .select('id, user_id, name, email, is_head_coach, created_at')
     .order('name', { ascending: true })
     .order('id', { ascending: true })
 
   if (error) throw error
   return (data ?? []) as CoachDirectoryEntry[]
+}
+
+async function fetchAllCoachAthleteLinks() {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('coach_athletes')
+    .select('coach_id, athlete_id')
+
+  if (error) throw error
+  return (data ?? []) as CoachAthleteLink[]
 }
 
 async function fetchManagedAthleteRows(coach: CoachProfile) {
@@ -161,15 +177,43 @@ function prioritizeUnassignedAthletes(athletes: ManagedAthleteRecord[]) {
   })
 }
 
+function buildManagedCoachRecords(coaches: CoachDirectoryEntry[], links: CoachAthleteLink[]) {
+  const managedAthleteCountByCoachId = new Map<number, number>()
+
+  for (const link of links) {
+    const coachId = Number(link.coach_id)
+    const athleteId = Number(link.athlete_id)
+    if (!Number.isFinite(coachId) || !Number.isFinite(athleteId)) continue
+    managedAthleteCountByCoachId.set(coachId, (managedAthleteCountByCoachId.get(coachId) ?? 0) + 1)
+  }
+
+  return [...coaches]
+    .map(
+      (coach) =>
+        ({
+          ...coach,
+          managedAthleteCount: managedAthleteCountByCoachId.get(coach.id) ?? 0,
+        }) satisfies ManagedCoachRecord,
+    )
+    .sort((left, right) => {
+      if (left.is_head_coach !== right.is_head_coach) {
+        return left.is_head_coach ? -1 : 1
+      }
+
+      return coachDisplayName(left).localeCompare(coachDisplayName(right), 'zh-Hant')
+    })
+}
+
 export async function getCoachManagementSnapshot(coach: CoachProfile): Promise<CoachManagementSnapshot> {
   const [coaches, athletes] = await Promise.all([fetchCoachDirectory(), fetchManagedAthleteRows(coach)])
   const athleteIds = athletes.map((athlete) => athlete.id)
-  const links = await fetchCoachAthleteLinks(athleteIds)
+  const [links, allLinks] = await Promise.all([fetchCoachAthleteLinks(athleteIds), fetchAllCoachAthleteLinks()])
   const hydratedAthletes = buildAssignmentLookup(athletes, coaches, links)
 
   return {
     athletes: coach.is_head_coach ? prioritizeUnassignedAthletes(hydratedAthletes) : hydratedAthletes,
     assignableCoaches: coaches.filter((entry) => entry.is_head_coach !== true),
+    coaches: coach.is_head_coach ? buildManagedCoachRecords(coaches, allLinks) : [],
   }
 }
 
@@ -206,22 +250,6 @@ async function listAuthUsersByEmail(admin: SupabaseClient, email: string) {
   return null
 }
 
-async function createAuthUserForAthlete(admin: SupabaseClient, name: string, email: string, tempPassword: string) {
-  const { data, error } = await admin.auth.admin.createUser({
-    email,
-    password: tempPassword,
-    email_confirm: true,
-    user_metadata: { name },
-  })
-
-  if (error) throw error
-  if (!data.user) {
-    throw new Error('新增學員失敗，沒有收到 Auth user。')
-  }
-
-  return data.user
-}
-
 async function resetAthleteTempPassword(admin: SupabaseClient, userId: string, tempPassword: string) {
   const { data, error } = await admin.auth.admin.updateUserById(userId, {
     password: tempPassword,
@@ -229,41 +257,6 @@ async function resetAthleteTempPassword(admin: SupabaseClient, userId: string, t
 
   if (error) throw error
   return data.user
-}
-
-async function createOrLinkAuthUserForAthlete(admin: SupabaseClient, name: string, email: string, tempPassword: string) {
-  const existingAuthUser = await listAuthUsersByEmail(admin, email)
-  if (existingAuthUser) {
-    await resetAthleteTempPassword(admin, existingAuthUser.id, tempPassword)
-    return {
-      authUser: existingAuthUser,
-      message: 'Supabase Authentication 裡已有此 Email，已連結並重設臨時密碼。',
-    }
-  }
-
-  try {
-    const authUser = await createAuthUserForAthlete(admin, name, email, tempPassword)
-    return {
-      authUser,
-      message: '已建立新的 Supabase Auth 帳號，並產生臨時密碼。',
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
-    if (!message.includes('already') && !message.includes('registered')) {
-      throw error
-    }
-
-    const authUser = await listAuthUsersByEmail(admin, email)
-    if (!authUser) {
-      throw error
-    }
-
-    await resetAthleteTempPassword(admin, authUser.id, tempPassword)
-    return {
-      authUser,
-      message: 'Supabase Authentication 裡已有此 Email，已連結並重設臨時密碼。',
-    }
-  }
 }
 
 async function hydrateSingleAthlete(athleteId: number) {
@@ -314,11 +307,7 @@ export async function createAthleteForCoach(
     return { error: '這個 Email 已經存在，不能重複建立學員帳號。' }
   }
 
-  const tempPassword = generateTempPassword()
-
   try {
-    const { authUser, message } = await createOrLinkAuthUserForAthlete(admin, name, email, tempPassword)
-
     const { data: insertedAthlete, error: insertError } = await admin
       .from('athletes')
       .insert({
@@ -326,8 +315,8 @@ export async function createAthleteForCoach(
         email,
         sport,
         level,
-        user_id: authUser.id,
-        must_change_password: true,
+        user_id: null,
+        must_change_password: false,
       })
       .select('id')
       .single()
@@ -365,8 +354,7 @@ export async function createAthleteForCoach(
 
     return {
       data: hydratedAthlete,
-      message: `${message} 已新增學員。`,
-      tempPassword,
+      message: '已新增學員。學員之後請直接使用這個 Email 透過 Google 登入，系統會在第一次登入時自動綁定帳號。',
     }
   } catch (error) {
     return {
@@ -406,12 +394,9 @@ export async function resetTemporaryPasswordForAthlete(
         authUserId = existingAuthUser.id
         message = '已連結既有 Auth 帳號，並重設臨時密碼。'
       } else {
-        if (!athlete.email) {
-          return { error: '這位學員沒有 Email，無法建立或重設登入帳號。' }
+        return {
+          error: '這位學員目前沒有可重設的 password 帳號。Google 登入學員不會自動建立臨時密碼帳號。',
         }
-        const authUser = await createAuthUserForAthlete(admin, athlete.name ?? '', athlete.email, tempPassword)
-        authUserId = authUser.id
-        message = '已建立 Auth 帳號，並產生臨時密碼。'
       }
     }
 
@@ -458,23 +443,9 @@ export async function deleteAthleteForCoach(
       return { error: athleteDeleteError.message }
     }
 
-    if (athlete.user_id) {
-      const { error: authDeleteError } = await admin.auth.admin.deleteUser(athlete.user_id)
-      if (authDeleteError) {
-        const text = authDeleteError.message.toLowerCase()
-        if (!text.includes('user not found')) {
-          return { error: authDeleteError.message }
-        }
-        return {
-          data: { athleteId: athlete.id },
-          message: '學員資料已刪除；Supabase Auth 帳號原本就不存在，所以已略過 Auth 刪除。',
-        }
-      }
-    }
-
     return {
       data: { athleteId: athlete.id },
-      message: '已刪除學員。',
+      message: '已刪除學員資料；既有 Supabase Auth user 會保留，不會被系統自動刪除。',
     }
   } catch (error) {
     return {
@@ -527,4 +498,267 @@ export async function replaceAthleteCoachAssignments(
 export async function getAccessibleManagedAthleteForCoach(coach: CoachProfile, athleteId: number) {
   const snapshot = await getCoachManagementSnapshot(coach)
   return snapshot.athletes.find((athlete) => athlete.id === athleteId) ?? null
+}
+
+export async function createCoachForHeadCoach(
+  actor: CoachProfile,
+  payload: {
+    name: string
+    email: string
+  },
+): Promise<AdminMutationResult<ManagedCoachRecord>> {
+  if (!actor.is_head_coach) {
+    return { error: '只有總教練可以新增教練。' }
+  }
+
+  const { admin, error: adminError } = await ensureServiceRoleClient()
+  if (!admin) return { error: adminError ?? '缺少 service role。' }
+
+  const name = payload.name.trim()
+  const email = normalizeEmail(payload.email)
+
+  if (!name || !email) {
+    return { error: '請先輸入教練姓名和 Google Email。' }
+  }
+
+  const { data: duplicateRows, error: duplicateError } = await admin
+    .from('coaches')
+    .select('id')
+    .ilike('email', email)
+    .limit(1)
+
+  if (duplicateError) return { error: duplicateError.message }
+  if ((duplicateRows ?? []).length > 0) {
+    return { error: '這個 Email 已經存在，不能重複建立教練。' }
+  }
+
+  const { data: insertedCoach, error: insertError } = await admin
+    .from('coaches')
+    .insert({
+      name,
+      email,
+      user_id: null,
+      is_head_coach: false,
+    })
+    .select('id, user_id, name, email, is_head_coach, created_at')
+    .single()
+
+  if (insertError) {
+    return { error: insertError.message }
+  }
+
+  return {
+    data: {
+      ...(insertedCoach as CoachDirectoryEntry),
+      managedAthleteCount: 0,
+    },
+    message: '已新增教練。這位教練之後請使用這個 Google Email 登入，系統會在第一次登入時自動綁定 user_id。',
+  }
+}
+
+export async function updateCoachForHeadCoach(
+  actor: CoachProfile,
+  coachId: number,
+  payload: {
+    name: string
+    email: string
+  },
+): Promise<AdminMutationResult<ManagedCoachRecord>> {
+  if (!actor.is_head_coach) {
+    return { error: '只有總教練可以編輯教練資料。' }
+  }
+
+  const { admin, error: adminError } = await ensureServiceRoleClient()
+  if (!admin) return { error: adminError ?? '缺少 service role。' }
+
+  const name = payload.name.trim()
+  const email = normalizeEmail(payload.email)
+
+  if (!name || !email) {
+    return { error: '請先輸入教練姓名和 Google Email。' }
+  }
+
+  const { data: currentCoach, error: currentCoachError } = await admin
+    .from('coaches')
+    .select('id, user_id, name, email, is_head_coach, created_at')
+    .eq('id', coachId)
+    .maybeSingle()
+
+  if (currentCoachError) return { error: currentCoachError.message }
+  if (!currentCoach) return { error: '找不到這位教練。' }
+
+  const { data: duplicateRows, error: duplicateError } = await admin
+    .from('coaches')
+    .select('id')
+    .ilike('email', email)
+    .neq('id', coachId)
+    .limit(1)
+
+  if (duplicateError) return { error: duplicateError.message }
+  if ((duplicateRows ?? []).length > 0) {
+    return { error: '這個 Email 已經被其他教練使用。' }
+  }
+
+  const { data: updatedCoach, error: updateError } = await admin
+    .from('coaches')
+    .update({
+      name,
+      email,
+    })
+    .eq('id', coachId)
+    .select('id, user_id, name, email, is_head_coach, created_at')
+    .single()
+
+  if (updateError) {
+    return { error: updateError.message }
+  }
+
+  const { count, error: countError } = await admin
+    .from('coach_athletes')
+    .select('id', { count: 'exact', head: true })
+    .eq('coach_id', coachId)
+
+  if (countError) {
+    return { error: countError.message }
+  }
+
+  const needsRebindNotice = Boolean(currentCoach.user_id) && normalizeEmail(currentCoach.email ?? '') !== email
+
+  return {
+    data: {
+      ...(updatedCoach as CoachDirectoryEntry),
+      managedAthleteCount: count ?? 0,
+    },
+    message: needsRebindNotice
+      ? '已更新教練資料。由於這位教練已綁定 Google，之後需要使用新的 Google Email 重新登入。'
+      : '已更新教練資料。',
+  }
+}
+
+export async function deleteCoachForHeadCoach(
+  actor: CoachProfile,
+  coachId: number,
+): Promise<AdminMutationResult<CoachDeleteResult>> {
+  if (!actor.is_head_coach) {
+    return { error: '只有總教練可以刪除教練。' }
+  }
+
+  if (actor.id === coachId) {
+    return { error: '目前不支援刪除正在登入的總教練帳號。' }
+  }
+
+  const { admin, error: adminError } = await ensureServiceRoleClient()
+  if (!admin) return { error: adminError ?? '缺少 service role。' }
+
+  const { data: targetCoach, error: coachLookupError } = await admin
+    .from('coaches')
+    .select('id, user_id, email, is_head_coach')
+    .eq('id', coachId)
+    .maybeSingle()
+
+  if (coachLookupError) {
+    return { error: coachLookupError.message }
+  }
+
+  if (!targetCoach) {
+    return { error: '找不到這位教練。' }
+  }
+
+  if (Number(targetCoach.id) === actor.id) {
+    return { error: '不能刪除目前登入中的自己。' }
+  }
+
+  const { data: assignmentLinks, error: assignmentLookupError } = await admin
+    .from('coach_athletes')
+    .select('id, athlete_id')
+    .eq('coach_id', coachId)
+
+  if (assignmentLookupError) {
+    return { error: assignmentLookupError.message }
+  }
+
+  const assignedAthleteIds = (assignmentLinks ?? [])
+    .map((link) => Number(link.athlete_id))
+    .filter((value) => Number.isFinite(value))
+
+  const assignedAthleteCount = assignedAthleteIds.length
+
+  let authDeletionSkippedMissingUser = false
+
+  if (targetCoach.user_id) {
+    const { error: authDeleteError } = await admin.auth.admin.deleteUser(targetCoach.user_id)
+
+    if (authDeleteError) {
+      const normalizedMessage = authDeleteError.message.toLowerCase()
+      const canContinue =
+        normalizedMessage.includes('not found') ||
+        normalizedMessage.includes('user not found') ||
+        normalizedMessage.includes('already been deleted')
+
+      if (!canContinue) {
+        console.error('[LAB33][CoachDelete] auth user deletion failed', {
+          coachId: targetCoach.id,
+          email: targetCoach.email,
+          userId: targetCoach.user_id,
+          assignedAthleteCount,
+          completedSteps: [],
+          error: authDeleteError.message,
+        })
+        return { error: `刪除登入帳號失敗：${authDeleteError.message}` }
+      }
+
+      authDeletionSkippedMissingUser = true
+      console.info('[LAB33][CoachDelete] auth user already missing, continue cleanup', {
+        coachId: targetCoach.id,
+        email: targetCoach.email,
+        userId: targetCoach.user_id,
+      })
+    }
+  }
+
+  const { error: relationDeleteError } = await admin
+    .from('coach_athletes')
+    .delete()
+    .eq('coach_id', coachId)
+
+  if (relationDeleteError) {
+    console.error('[LAB33][CoachDelete] failed after auth deletion while removing coach_athletes', {
+      coachId: targetCoach.id,
+      email: targetCoach.email,
+      userId: targetCoach.user_id,
+      assignedAthleteIds,
+      completedSteps: ['auth:user:deleted-or-missing'],
+      error: relationDeleteError.message,
+    })
+    return {
+      error:
+        '登入帳號已處理，但移除學員指派失敗。請保留這位教練資料並檢查 server log 後再人工處理。',
+    }
+  }
+
+  const { error: deleteError } = await admin.from('coaches').delete().eq('id', coachId)
+  if (deleteError) {
+    console.error('[LAB33][CoachDelete] failed after auth deletion and unassignment while deleting coach row', {
+      coachId: targetCoach.id,
+      email: targetCoach.email,
+      userId: targetCoach.user_id,
+      assignedAthleteIds,
+      completedSteps: ['auth:user:deleted-or-missing', 'coach_athletes:deleted'],
+      error: deleteError.message,
+    })
+    return {
+      error:
+        '登入帳號與學員指派已處理，但刪除教練資料失敗。請查看 server log，確認 `public.coaches` 是否需要人工清理。',
+    }
+  }
+
+  return {
+    data: {
+      coachId,
+      unassignedAthleteCount: assignedAthleteCount,
+    },
+    message: authDeletionSkippedMissingUser
+      ? `教練已刪除，${assignedAthleteCount} 位學員已改為未指派。原登入帳號原本已不存在，系統已完成 public 資料清理。`
+      : `教練已刪除，${assignedAthleteCount} 位學員已改為未指派。`,
+  }
 }

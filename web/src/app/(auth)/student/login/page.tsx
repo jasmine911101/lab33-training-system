@@ -1,21 +1,34 @@
 import { redirect } from 'next/navigation'
 
 import { LoginForm } from '@/components/auth/login-form'
+import { getOAuthErrorMessage } from '@/lib/auth/oauth-errors'
 import { getAppContextForUser } from '@/lib/auth/roles'
 import { getAuthenticatedUser } from '@/lib/auth/session'
 
-export default async function StudentLoginPage() {
+export default async function StudentLoginPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
   const user = await getAuthenticatedUser()
 
   if (user) {
     const context = await getAppContextForUser(user)
-    if (context.hasStudentAccess) {
+    if (context.role === 'student' && context.hasStudentAccess) {
       redirect('/student')
     }
-    if (context.hasCoachAccess) {
+    if (context.role === 'coach' && context.hasCoachAccess) {
       redirect('/coach')
     }
   }
+
+  const resolvedSearchParams = (await searchParams) ?? {}
+  const oauthErrorParam = Array.isArray(resolvedSearchParams.oauth_error)
+    ? resolvedSearchParams.oauth_error[0]
+    : resolvedSearchParams.oauth_error
+  const oauthMessageParam = Array.isArray(resolvedSearchParams.oauth_message)
+    ? resolvedSearchParams.oauth_message[0]
+    : resolvedSearchParams.oauth_message
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#efe7db_0%,#fbfaf7_100%)] px-4 py-10 text-stone-900 sm:px-6 lg:px-8">
@@ -28,7 +41,10 @@ export default async function StudentLoginPage() {
           </p>
         </section>
         <section className="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-sm">
-          <LoginForm mode="student" />
+          <LoginForm
+            mode="student"
+            initialError={oauthMessageParam ?? getOAuthErrorMessage(oauthErrorParam) ?? null}
+          />
         </section>
       </div>
     </main>

@@ -186,7 +186,13 @@ export function CoachAthleteDetailAdmin({
             </div>
             <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
               <span className="truncate font-medium text-slate-700">{athlete.email ?? '-'}</span>
-              {athlete.must_change_password ? <span className="lab-badge-warning">需更新密碼</span> : <span className="lab-badge-success">可正常登入</span>}
+              {!athlete.user_id ? (
+                <span className="lab-badge-info">等待 Google 綁定</span>
+              ) : athlete.must_change_password ? (
+                <span className="lab-badge-warning">需更新密碼</span>
+              ) : (
+                <span className="lab-badge-success">可正常登入</span>
+              )}
             </div>
           </div>
           <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-lg text-slate-500 transition">
@@ -204,13 +210,21 @@ export function CoachAthleteDetailAdmin({
             </dl>
 
             <div className="mt-6 flex flex-wrap gap-3">
-              <button type="button" className="lab-btn-secondary" disabled={isResetting} onClick={() => void handleResetPassword()}>
-                {isResetting ? '重設中...' : '重設臨時密碼'}
-              </button>
+              {athlete.user_id ? (
+                <button type="button" className="lab-btn-secondary" disabled={isResetting} onClick={() => void handleResetPassword()}>
+                  {isResetting ? '重設中...' : '重設臨時密碼'}
+                </button>
+              ) : null}
               <button type="button" className="lab-btn-secondary" onClick={() => setConfirmDelete((current) => !current)}>
                 {confirmDelete ? '收起刪除確認' : '刪除學員'}
               </button>
             </div>
+
+            {!athlete.user_id ? (
+              <p className="mt-4 rounded-[1rem] bg-sky-50 px-4 py-3 text-sm text-sky-700">
+                這位學員尚未完成第一次 Google 登入綁定，目前不會建立臨時密碼或 Supabase Auth 帳號。
+              </p>
+            ) : null}
 
             {feedback ? <p className="mt-4 rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{feedback}</p> : null}
             {error ? <p className="mt-4 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}

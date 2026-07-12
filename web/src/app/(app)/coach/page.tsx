@@ -47,8 +47,10 @@ export default async function CoachHomePage() {
         coachName={coachProfile.name ?? coachProfile.email ?? null}
         currentCoachId={coachProfile.id}
         initialAthletes={managementSnapshot.athletes}
+        initialCoaches={managementSnapshot.coaches}
         assignableCoaches={managementSnapshot.assignableCoaches}
         isHeadCoach={coachProfile.is_head_coach === true}
+        allowPasswordManagement={!context.isGoogleSession}
       />
     </AppShell>
   )

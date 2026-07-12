@@ -9,7 +9,9 @@ import {
   coachDisplayName,
   rankAthletesBySearch,
   type CoachDirectoryEntry,
+  type ManagedCoachRecord,
   type ManagedAthleteRecord,
+  rankCoachesBySearch,
 } from '@/lib/types/coach-management'
 
 type CoachAthleteManagerProps = {
@@ -18,8 +20,10 @@ type CoachAthleteManagerProps = {
   coachName?: string | null
   currentCoachId: number
   initialAthletes: ManagedAthleteRecord[]
+  initialCoaches: ManagedCoachRecord[]
   assignableCoaches: CoachDirectoryEntry[]
   isHeadCoach: boolean
+  allowPasswordManagement?: boolean
 }
 
 type ApiSuccess<T> = T & {
@@ -31,6 +35,17 @@ type FilterValue = 'all' | 'mine' | 'unassigned' | `coach:${number}`
 type AssignmentDialogState = {
   athlete: ManagedAthleteRecord
   selectedCoachId: number | null
+}
+
+type CoachEditorState = {
+  coachId: number | null
+  name: string
+  email: string
+  hasBoundGoogle: boolean
+}
+
+type CoachDeleteDialogState = {
+  coach: ManagedCoachRecord
 }
 
 function buildFilterOptions(assignableCoaches: CoachDirectoryEntry[], isHeadCoach: boolean) {
@@ -78,7 +93,6 @@ function CreateAthleteSection({
   handleCreateAthlete,
   createError,
   createSuccess,
-  createdTempPassword,
   isCreating,
 }: {
   isHeadCoach: boolean
@@ -96,7 +110,6 @@ function CreateAthleteSection({
   handleCreateAthlete: (event: React.FormEvent<HTMLFormElement>) => Promise<void>
   createError: string | null
   createSuccess: string | null
-  createdTempPassword: { email: string; password: string } | null
   isCreating: boolean
 }) {
   return (
@@ -165,14 +178,6 @@ function CreateAthleteSection({
 
             {createError ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{createError}</p> : null}
             {createSuccess ? <p className="rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{createSuccess}</p> : null}
-            {createdTempPassword ? (
-              <div className="rounded-[1.25rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-                <p className="font-semibold">請把這組臨時密碼交給學員</p>
-                <p className="mt-2">Email：{createdTempPassword.email}</p>
-                <p className="mt-1 font-mono">Temporary Password：{createdTempPassword.password}</p>
-              </div>
-            ) : null}
-
             <div>
               <button type="submit" className="lab-btn-primary w-full sm:w-auto" disabled={isCreating}>
                 {isCreating ? '建立中...' : '新增學員'}
@@ -265,6 +270,308 @@ function AssignmentDialog({
   )
 }
 
+function formatCreatedDate(value?: string | null) {
+  if (!value) return '-'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+
+  return new Intl.DateTimeFormat('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
+}
+
+function CoachEditorDialog({
+  state,
+  error,
+  success,
+  isSaving,
+  onClose,
+  onChange,
+  onSubmit,
+}: {
+  state: CoachEditorState
+  error: string | null
+  success: string | null
+  isSaving: boolean
+  onClose: () => void
+  onChange: (field: 'name' | 'email', value: string) => void
+  onSubmit: () => void
+}) {
+  const isEditing = state.coachId != null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">
+      <div className="w-full max-w-2xl rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.18)] sm:p-7">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="lab-eyebrow">Coach Management</p>
+            <h3 className="mt-3 text-2xl font-bold text-slate-900">{isEditing ? '編輯教練' : '新增教練'}</h3>
+            <p className="mt-3 text-sm leading-7 text-slate-600">
+              {isEditing
+                ? '只會更新 public.coaches 的教練資料，不會自動修改 Google Auth 帳號。'
+                : '只建立 public.coaches 資料，第一次 Google 登入時才會自動綁定 user_id。'}
+            </p>
+          </div>
+          <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={onClose}>
+            關閉
+          </button>
+        </div>
+
+        <div className="mt-6 grid gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label htmlFor="coach-editor-name" className="text-sm font-semibold text-slate-700">姓名</label>
+              <input
+                id="coach-editor-name"
+                className="lab-input"
+                value={state.name}
+                onChange={(event) => onChange('name', event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="coach-editor-email" className="text-sm font-semibold text-slate-700">Google Email</label>
+              <input
+                id="coach-editor-email"
+                type="email"
+                className="lab-input"
+                value={state.email}
+                onChange={(event) => onChange('email', event.target.value)}
+              />
+            </div>
+          </div>
+
+          {state.hasBoundGoogle ? (
+            <p className="rounded-[1rem] bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              修改 Email 後，這位教練下次需要使用新的 Google Email 登入。系統不會自動修改 `auth.users`。
+            </p>
+          ) : null}
+
+          {error ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+          {success ? <p className="rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</p> : null}
+
+          <div className="flex flex-wrap gap-3">
+            <button type="button" className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" disabled={isSaving} onClick={onSubmit}>
+              {isSaving ? '儲存中...' : isEditing ? '儲存教練資料' : '新增教練'}
+            </button>
+            <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" disabled={isSaving} onClick={onClose}>
+              取消
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CoachDeleteDialog({
+  state,
+  isDeleting,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  state: CoachDeleteDialogState
+  isDeleting: boolean
+  error: string | null
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  const coach = state.coach
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">
+      <div className="w-full max-w-2xl rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.18)] sm:p-7">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="lab-eyebrow">Delete Coach</p>
+            <h3 className="mt-3 text-2xl font-bold text-slate-900">確認刪除教練</h3>
+            <p className="mt-3 text-sm leading-7 text-slate-600">
+              你即將刪除 <span className="font-semibold text-slate-900">{coach.name ?? coach.email ?? `Coach ${coach.id}`}</span>。
+            </p>
+          </div>
+          <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={onClose}>
+            關閉
+          </button>
+        </div>
+
+        <div className="mt-6 rounded-[1.25rem] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-900">
+          <p className="font-semibold">此操作無法復原。</p>
+          <ul className="mt-3 list-disc space-y-2 pl-5 leading-7">
+            <li>該教練負責的學員會變成「未指派」</li>
+            <li>該教練的 `public.coaches` 資料會刪除</li>
+            <li>若該教練已綁定登入帳號，對應的 Supabase `auth.users` 也會刪除</li>
+            <li>學員、課表、回報與一般事件都會保留</li>
+          </ul>
+        </div>
+
+        <div className="mt-5 rounded-[1rem] bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <p>教練 Email：{coach.email ?? '-'}</p>
+          <p className="mt-1">目前負責學員數：{coach.managedAthleteCount}</p>
+          <p className="mt-1">登入綁定：{coach.user_id ? '已綁定 Google / Auth user' : '尚未綁定登入帳號'}</p>
+        </div>
+
+        {error ? <p className="mt-5 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button
+            type="button"
+            className="inline-flex min-h-10 items-center justify-center rounded-full bg-rose-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300"
+            disabled={isDeleting}
+            onClick={onConfirm}
+          >
+            {isDeleting ? '刪除中...' : '確認刪除教練'}
+          </button>
+          <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" disabled={isDeleting} onClick={onClose}>
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CoachManagementSection({
+  coaches,
+  search,
+  setSearch,
+  isOpen,
+  setIsOpen,
+  currentCoachId,
+  onCreate,
+  onEdit,
+  onDeleteRequest,
+  deletingCoachId,
+  feedbackMessage,
+  feedbackError,
+}: {
+  coaches: ManagedCoachRecord[]
+  search: string
+  setSearch: React.Dispatch<React.SetStateAction<string>>
+  isOpen: boolean
+  setIsOpen: React.Dispatch<React.SetStateAction<boolean>>
+  currentCoachId: number
+  onCreate: () => void
+  onEdit: (coach: ManagedCoachRecord) => void
+  onDeleteRequest: (coach: ManagedCoachRecord) => void
+  deletingCoachId: number | null
+  feedbackMessage: string | null
+  feedbackError: string | null
+}) {
+  const filteredCoaches = useMemo(() => rankCoachesBySearch(coaches, search), [coaches, search])
+
+  return (
+    <article className="lab-card p-6 sm:p-7">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="lab-eyebrow">Coach Management</p>
+          <h2 className="lab-section-title mt-3">教練管理</h2>
+          <p className="mt-3 text-sm leading-7 text-slate-600">只有總教練可以查看教練列表、建立新教練與調整教練資料。</p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            className="lab-btn-secondary !min-h-10 border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold shadow-none"
+            onClick={onCreate}
+          >
+            ＋ 新增教練
+          </button>
+          <button
+            type="button"
+            className="lab-btn-secondary !min-h-10 border-slate-200 bg-white px-4 py-2 text-sm font-bold shadow-none"
+            onClick={() => setIsOpen((current) => !current)}
+            aria-expanded={isOpen}
+          >
+            {isOpen ? '收起教練列表' : '展開教練列表'}
+          </button>
+        </div>
+      </div>
+
+      {isOpen ? (
+        <div className="mt-6 space-y-5">
+          <div className="space-y-2">
+            <label htmlFor="coach-management-search" className="text-sm font-semibold text-slate-700">搜尋教練</label>
+            <input
+              id="coach-management-search"
+              className="lab-input"
+              placeholder="輸入姓名或 Email"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+
+          {feedbackError ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{feedbackError}</p> : null}
+          {feedbackMessage ? <p className="rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{feedbackMessage}</p> : null}
+
+          {filteredCoaches.length === 0 ? (
+            <div className="lab-card-muted px-5 py-6 text-sm text-slate-600">目前沒有符合條件的教練。</div>
+          ) : (
+            <div className="overflow-x-auto rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+              <table className="w-full min-w-[760px] border-collapse">
+                <thead className="bg-slate-50">
+                  <tr className="text-left text-xs font-bold uppercase tracking-[0.28em] text-slate-500">
+                    <th className="border-b border-slate-200 px-6 py-4">姓名</th>
+                    <th className="border-b border-slate-200 px-6 py-4">Email</th>
+                    <th className="border-b border-slate-200 px-6 py-4">負責學員數</th>
+                    <th className="border-b border-slate-200 px-6 py-4">身分</th>
+                    <th className="border-b border-slate-200 px-6 py-4">建立日期</th>
+                    <th className="border-b border-slate-200 px-6 py-4 text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCoaches.map((coach) => (
+                    <tr key={coach.id} className="align-middle transition hover:bg-slate-50/60">
+                      <td className="border-b border-slate-100 px-6 py-4 text-sm font-semibold text-slate-900 last:border-b-0">
+                        {coach.name ?? '-'}
+                      </td>
+                      <td className="border-b border-slate-100 px-6 py-4 text-sm text-slate-600 last:border-b-0">
+                        {coach.email ?? '-'}
+                      </td>
+                      <td className="border-b border-slate-100 px-6 py-4 text-sm text-slate-700 last:border-b-0">
+                        {coach.managedAthleteCount} 位學員
+                      </td>
+                      <td className="border-b border-slate-100 px-6 py-4 last:border-b-0">
+                        <span className={coach.is_head_coach ? 'lab-badge-warning' : 'lab-badge-info'}>
+                          {coach.is_head_coach ? '總教練' : '一般教練'}
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-6 py-4 text-sm text-slate-600 last:border-b-0">
+                        {formatCreatedDate(coach.created_at)}
+                      </td>
+                      <td className="border-b border-slate-100 px-6 py-4 text-right last:border-b-0">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
+                            onClick={() => onEdit(coach)}
+                          >
+                            編輯
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex min-h-10 items-center justify-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+                            onClick={() => onDeleteRequest(coach)}
+                            disabled={deletingCoachId === coach.id || coach.id === currentCoachId}
+                            title={coach.id === currentCoachId ? '目前不支援刪除正在登入的總教練帳號' : undefined}
+                          >
+                            {deletingCoachId === coach.id ? '刪除中...' : '刪除'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </article>
+  )
+}
+
 function ActionDropdown({
   isHeadCoach,
   open,
@@ -275,6 +582,7 @@ function ActionDropdown({
   onAssign,
   onReset,
   onDelete,
+  canResetPassword,
 }: {
   isHeadCoach: boolean
   open: boolean
@@ -285,6 +593,7 @@ function ActionDropdown({
   onAssign: () => void
   onReset: () => void
   onDelete: () => void
+  canResetPassword: boolean
 }) {
   const buttonRef = useRef<HTMLDivElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -311,7 +620,7 @@ function ActionDropdown({
 
       const viewportWidth = window.innerWidth
       const viewportHeight = window.innerHeight
-      const itemCount = isHeadCoach ? 3 : 2
+      const itemCount = (isHeadCoach ? 1 : 0) + (canResetPassword ? 1 : 0) + 1
       const gap = 8
       const width = 216
       const estimatedHeight = itemCount * 48 + 16
@@ -356,7 +665,7 @@ function ActionDropdown({
       window.removeEventListener('resize', updateMenuPosition)
       window.removeEventListener('scroll', updateMenuPosition, true)
     }
-  }, [isHeadCoach, open, onClose, openUpward])
+  }, [canResetPassword, isHeadCoach, open, onClose, openUpward])
 
   return (
     <div ref={buttonRef} className="relative inline-flex">
@@ -385,15 +694,17 @@ function ActionDropdown({
                   <span className="shrink-0 text-slate-400">›</span>
                 </button>
               ) : null}
-              <button
-                type="button"
-                className="flex h-11 w-full items-center justify-between gap-3 whitespace-nowrap rounded-[0.85rem] px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                onClick={onReset}
-                disabled={loading}
-              >
-                <span className="block flex-1 whitespace-nowrap text-left [word-break:keep-all] [overflow-wrap:normal]">重設密碼</span>
-                <span className="shrink-0 text-slate-400">›</span>
-              </button>
+              {canResetPassword ? (
+                <button
+                  type="button"
+                  className="flex h-11 w-full items-center justify-between gap-3 whitespace-nowrap rounded-[0.85rem] px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  onClick={onReset}
+                  disabled={loading}
+                >
+                  <span className="block flex-1 whitespace-nowrap text-left [word-break:keep-all] [overflow-wrap:normal]">重設密碼</span>
+                  <span className="shrink-0 text-slate-400">›</span>
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="flex h-11 w-full items-center justify-between gap-3 whitespace-nowrap rounded-[0.85rem] px-3 py-2 text-left text-sm font-medium text-rose-700 transition hover:bg-rose-50"
@@ -541,6 +852,7 @@ function ManagedAthletesSection({
                         open={openActionId === athlete.id}
                         openUpward={openUpward}
                         loading={actionLoadingId === athlete.id}
+                        canResetPassword={Boolean(athlete.user_id)}
                         onToggle={() => setOpenActionId((current) => (current === athlete.id ? null : athlete.id))}
                         onClose={() => setOpenActionId(null)}
                         onAssign={() => {
@@ -568,7 +880,9 @@ function ManagedAthletesSection({
                     </div>
                     <span className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">狀態</span>
                     <div>
-                      {athlete.must_change_password ? (
+                      {!athlete.user_id ? (
+                        <span className="lab-badge-info">等待 Google 綁定</span>
+                      ) : athlete.must_change_password ? (
                         <span className="lab-badge-warning">需要更新密碼</span>
                       ) : (
                         <span className="lab-badge-success">正常</span>
@@ -629,7 +943,9 @@ function ManagedAthletesSection({
                             </div>
                           </td>
                           <td className="border-b border-slate-100 px-6 py-4 last:border-b-0">
-                            {athlete.must_change_password ? (
+                            {!athlete.user_id ? (
+                              <span className="lab-badge-info">等待 Google 綁定</span>
+                            ) : athlete.must_change_password ? (
                               <span className="lab-badge-warning">需要更新密碼</span>
                             ) : (
                               <span className="lab-badge-success">正常</span>
@@ -641,6 +957,7 @@ function ManagedAthletesSection({
                               open={openActionId === athlete.id}
                               openUpward={openUpward}
                               loading={actionLoadingId === athlete.id}
+                              canResetPassword={Boolean(athlete.user_id)}
                               onToggle={() => setOpenActionId((current) => (current === athlete.id ? null : athlete.id))}
                               onClose={() => setOpenActionId(null)}
                               onAssign={() => {
@@ -671,11 +988,25 @@ function ManagedAthletesSection({
   )
 }
 
-export function CoachAthleteManager({ roleLabel, userEmail, coachName, currentCoachId, initialAthletes, assignableCoaches, isHeadCoach }: CoachAthleteManagerProps) {
+export function CoachAthleteManager({
+  roleLabel,
+  userEmail,
+  coachName,
+  currentCoachId,
+  initialAthletes,
+  initialCoaches,
+  assignableCoaches,
+  isHeadCoach,
+  allowPasswordManagement = true,
+}: CoachAthleteManagerProps) {
   const [athletes, setAthletes] = useState(initialAthletes)
+  const [coaches, setCoaches] = useState(initialCoaches)
+  const [coachDirectory, setCoachDirectory] = useState(assignableCoaches)
   const [search, setSearch] = useState('')
+  const [coachSearch, setCoachSearch] = useState('')
   const [filter, setFilter] = useState<FilterValue>('all')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [isCoachManagementOpen, setIsCoachManagementOpen] = useState(false)
   const [createName, setCreateName] = useState('')
   const [createEmail, setCreateEmail] = useState('')
   const [createSport, setCreateSport] = useState('')
@@ -683,7 +1014,6 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, currentCo
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState<string | null>(null)
-  const [createdTempPassword, setCreatedTempPassword] = useState<{ email: string; password: string } | null>(null)
   const [openActionId, setOpenActionId] = useState<number | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
   const [resetPasswordFeedback, setResetPasswordFeedback] = useState<{ email: string; password: string; message: string } | null>(null)
@@ -691,18 +1021,44 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, currentCo
   const [assignmentDialog, setAssignmentDialog] = useState<AssignmentDialogState | null>(null)
   const [assignmentSaving, setAssignmentSaving] = useState(false)
   const [assignmentError, setAssignmentError] = useState<string | null>(null)
+  const [coachEditor, setCoachEditor] = useState<CoachEditorState | null>(null)
+  const [coachEditorError, setCoachEditorError] = useState<string | null>(null)
+  const [coachEditorSuccess, setCoachEditorSuccess] = useState<string | null>(null)
+  const [coachEditorSaving, setCoachEditorSaving] = useState(false)
+  const [coachDeleteDialog, setCoachDeleteDialog] = useState<CoachDeleteDialogState | null>(null)
+  const [coachDeleteError, setCoachDeleteError] = useState<string | null>(null)
+  const [coachDeleteSuccess, setCoachDeleteSuccess] = useState<string | null>(null)
+  const [coachActionLoadingId, setCoachActionLoadingId] = useState<number | null>(null)
 
-  const filterOptions = useMemo(() => buildFilterOptions(assignableCoaches, isHeadCoach), [assignableCoaches, isHeadCoach])
+  const filterOptions = useMemo(() => buildFilterOptions(coachDirectory, isHeadCoach), [coachDirectory, isHeadCoach])
+
+  function applyCoachCountToAthletes(nextCoaches: ManagedCoachRecord[]) {
+    const labelByCoachId = new Map(nextCoaches.map((coach) => [coach.id, coachDisplayName(coach)]))
+
+    setAthletes((current) =>
+      current.map((athlete) => ({
+        ...athlete,
+        assignedCoachLabels: athlete.assignedCoachIds.map((coachId) => labelByCoachId.get(coachId) ?? `Coach ${coachId}`),
+        assignedCoachBadges: athlete.assignedCoachIds.map((coachId) => {
+          const match = nextCoaches.find((coach) => coach.id === coachId)
+          return {
+            id: coachId,
+            label: labelByCoachId.get(coachId) ?? `Coach ${coachId}`,
+            roleLabel: match?.is_head_coach ? '總教練' : '教練',
+          } as const
+        }),
+      })),
+    )
+  }
 
   async function handleCreateAthlete(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setIsCreating(true)
     setCreateError(null)
     setCreateSuccess(null)
-    setCreatedTempPassword(null)
 
     try {
-      const payload = await requestJson<{ athlete: ManagedAthleteRecord; tempPassword?: string }>(`/api/coach/athletes`, {
+      const payload = await requestJson<{ athlete: ManagedAthleteRecord }>(`/api/coach/athletes`, {
         method: 'POST',
         body: JSON.stringify({
           name: createName,
@@ -723,10 +1079,16 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, currentCo
             })
           : next
       })
-      setCreateSuccess(payload.message ?? '已新增學員。')
-      if (payload.tempPassword) {
-        setCreatedTempPassword({ email: payload.athlete.email ?? createEmail.trim().toLowerCase(), password: payload.tempPassword })
+      if (isHeadCoach && payload.athlete.assignedCoachIds.length > 0) {
+        setCoaches((current) =>
+          current.map((coach) =>
+            payload.athlete.assignedCoachIds.includes(coach.id)
+              ? { ...coach, managedAthleteCount: coach.managedAthleteCount + 1 }
+              : coach,
+          ),
+        )
       }
+      setCreateSuccess(payload.message ?? '已新增學員。')
       setCreateName('')
       setCreateEmail('')
       setCreateSport('')
@@ -769,6 +1131,20 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, currentCo
       })
 
       setAthletes((current) => current.map((athlete) => (athlete.id === payload.athlete.id ? payload.athlete : athlete)))
+      if (isHeadCoach) {
+        setCoaches((current) =>
+          current.map((coach) => {
+            const wasAssigned = assignmentDialog.athlete.assignedCoachIds.includes(coach.id)
+            const isAssigned = payload.athlete.assignedCoachIds.includes(coach.id)
+            if (wasAssigned === isAssigned) return coach
+
+            return {
+              ...coach,
+              managedAthleteCount: Math.max(0, coach.managedAthleteCount + (isAssigned ? 1 : -1)),
+            }
+          }),
+        )
+      }
       setAssignmentDialog(null)
     } catch (requestError) {
       setAssignmentError(requestError instanceof Error ? requestError.message : '更新教練指派失敗。')
@@ -813,8 +1189,146 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, currentCo
         method: 'DELETE',
       })
       setAthletes((current) => current.filter((item) => item.id !== payload.athleteId))
+      if (isHeadCoach) {
+        setCoaches((current) =>
+          current.map((coach) =>
+            athlete.assignedCoachIds.includes(coach.id)
+              ? { ...coach, managedAthleteCount: Math.max(0, coach.managedAthleteCount - 1) }
+              : coach,
+          ),
+        )
+      }
     } finally {
       setActionLoadingId(null)
+    }
+  }
+
+  function openCreateCoachDialog() {
+    setCoachEditorError(null)
+    setCoachEditorSuccess(null)
+    setCoachDeleteError(null)
+    setCoachDeleteSuccess(null)
+    setCoachEditor({
+      coachId: null,
+      name: '',
+      email: '',
+      hasBoundGoogle: false,
+    })
+  }
+
+  function openEditCoachDialog(coach: ManagedCoachRecord) {
+    setCoachEditorError(null)
+    setCoachEditorSuccess(null)
+    setCoachDeleteError(null)
+    setCoachDeleteSuccess(null)
+    setCoachEditor({
+      coachId: coach.id,
+      name: coach.name ?? '',
+      email: coach.email ?? '',
+      hasBoundGoogle: Boolean(coach.user_id),
+    })
+  }
+
+  function updateCoachEditorField(field: 'name' | 'email', value: string) {
+    setCoachEditor((current) => (current ? { ...current, [field]: value } : current))
+  }
+
+  async function handleSaveCoach() {
+    if (!coachEditor) return
+
+    setCoachEditorSaving(true)
+    setCoachEditorError(null)
+    setCoachEditorSuccess(null)
+
+    try {
+      if (coachEditor.coachId == null) {
+        const payload = await requestJson<{ coach: ManagedCoachRecord; message?: string }>(`/api/coach/coaches`, {
+          method: 'POST',
+          body: JSON.stringify({
+            name: coachEditor.name,
+            email: coachEditor.email,
+          }),
+        })
+
+        const nextCoaches = [...coaches, payload.coach]
+        setCoaches(nextCoaches)
+        setCoachDirectory(nextCoaches.filter((coach) => coach.is_head_coach !== true))
+        applyCoachCountToAthletes(nextCoaches)
+        setCoachEditorSuccess(payload.message ?? '已新增教練。')
+        setCoachEditor({
+          coachId: null,
+          name: '',
+          email: '',
+          hasBoundGoogle: false,
+        })
+        setIsCoachManagementOpen(true)
+        return
+      }
+
+      const payload = await requestJson<{ coach: ManagedCoachRecord; message?: string }>(`/api/coach/coaches/${coachEditor.coachId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: coachEditor.name,
+          email: coachEditor.email,
+        }),
+      })
+
+      const nextCoaches = coaches.map((coach) => (coach.id === payload.coach.id ? payload.coach : coach))
+      setCoaches(nextCoaches)
+      setCoachDirectory(nextCoaches.filter((coach) => coach.is_head_coach !== true))
+      applyCoachCountToAthletes(nextCoaches)
+      setCoachEditorSuccess(payload.message ?? '已更新教練資料。')
+    } catch (requestError) {
+      setCoachEditorError(requestError instanceof Error ? requestError.message : '儲存教練資料失敗。')
+    } finally {
+      setCoachEditorSaving(false)
+    }
+  }
+
+  async function handleDeleteCoach(coach: ManagedCoachRecord) {
+    setCoachDeleteError(null)
+    setCoachDeleteSuccess(null)
+    setCoachDeleteDialog({ coach })
+  }
+
+  async function confirmDeleteCoach() {
+    if (!coachDeleteDialog) return
+
+    const coach = coachDeleteDialog.coach
+    setCoachActionLoadingId(coach.id)
+    setCoachDeleteError(null)
+
+    try {
+      const payload = await requestJson<{ coachId: number; unassignedAthleteCount: number; message?: string }>(`/api/coach/coaches/${coach.id}`, {
+        method: 'DELETE',
+      })
+
+      const nextCoaches = coaches.filter((entry) => entry.id !== payload.coachId)
+      setCoaches(nextCoaches)
+      setCoachDirectory(nextCoaches.filter((coach) => coach.is_head_coach !== true))
+      setAthletes((current) =>
+        current.map((athlete) => {
+          if (!athlete.assignedCoachIds.includes(payload.coachId)) return athlete
+
+          const nextAssignedCoachIds = athlete.assignedCoachIds.filter((coachId) => coachId !== payload.coachId)
+          const nextAssignedCoachBadges = athlete.assignedCoachBadges.filter((badge) => badge.id !== payload.coachId)
+          const nextAssignedCoachLabels = nextAssignedCoachBadges.map((badge) => badge.label)
+
+          return {
+            ...athlete,
+            assignedCoachIds: nextAssignedCoachIds,
+            assignedCoachBadges: nextAssignedCoachBadges,
+            assignedCoachLabels: nextAssignedCoachLabels,
+          }
+        }),
+      )
+      applyCoachCountToAthletes(nextCoaches)
+      setCoachDeleteDialog(null)
+      setCoachDeleteSuccess(payload.message ?? `教練已刪除，${payload.unassignedAthleteCount} 位學員已改為未指派。`)
+    } catch (requestError) {
+      setCoachDeleteError(requestError instanceof Error ? requestError.message : '刪除教練失敗。')
+    } finally {
+      setCoachActionLoadingId(null)
     }
   }
 
@@ -825,10 +1339,11 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, currentCo
         athleteCount={athletes.length}
         userEmail={userEmail}
         coachName={coachName}
+        allowPasswordManagement={allowPasswordManagement}
         createAthleteSlot={
           <CreateAthleteSection
             isHeadCoach={isHeadCoach}
-            assignableCoaches={assignableCoaches}
+            assignableCoaches={coachDirectory}
             isCreateOpen={isCreateOpen}
             setIsCreateOpen={setIsCreateOpen}
             createName={createName}
@@ -842,11 +1357,27 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, currentCo
             handleCreateAthlete={handleCreateAthlete}
             createError={createError}
             createSuccess={createSuccess}
-            createdTempPassword={createdTempPassword}
             isCreating={isCreating}
           />
         }
       />
+
+      {isHeadCoach ? (
+        <CoachManagementSection
+          coaches={coaches}
+          search={coachSearch}
+          setSearch={setCoachSearch}
+          isOpen={isCoachManagementOpen}
+          setIsOpen={setIsCoachManagementOpen}
+          currentCoachId={currentCoachId}
+          onCreate={openCreateCoachDialog}
+          onEdit={openEditCoachDialog}
+          onDeleteRequest={handleDeleteCoach}
+          deletingCoachId={coachActionLoadingId}
+          feedbackMessage={coachDeleteSuccess}
+          feedbackError={coachDeleteError}
+        />
+      ) : null}
 
       <ManagedAthletesSection
         athletes={athletes}
@@ -870,7 +1401,7 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, currentCo
       {assignmentDialog && isHeadCoach ? (
         <AssignmentDialog
           state={assignmentDialog}
-          assignableCoaches={assignableCoaches}
+          assignableCoaches={coachDirectory}
           isSaving={assignmentSaving}
           error={assignmentError}
           onClose={() => {
@@ -879,6 +1410,37 @@ export function CoachAthleteManager({ roleLabel, userEmail, coachName, currentCo
           }}
           onSelectCoach={selectAssignmentCoach}
           onSave={() => void handleSaveAssignment()}
+        />
+      ) : null}
+
+      {coachEditor && isHeadCoach ? (
+        <CoachEditorDialog
+          state={coachEditor}
+          error={coachEditorError}
+          success={coachEditorSuccess}
+          isSaving={coachEditorSaving}
+          onClose={() => {
+            if (coachEditorSaving) return
+            setCoachEditor(null)
+            setCoachEditorError(null)
+            setCoachEditorSuccess(null)
+          }}
+          onChange={updateCoachEditorField}
+          onSubmit={() => void handleSaveCoach()}
+        />
+      ) : null}
+
+      {coachDeleteDialog && isHeadCoach ? (
+        <CoachDeleteDialog
+          state={coachDeleteDialog}
+          isDeleting={coachActionLoadingId === coachDeleteDialog.coach.id}
+          error={coachDeleteError}
+          onClose={() => {
+            if (coachActionLoadingId != null) return
+            setCoachDeleteDialog(null)
+            setCoachDeleteError(null)
+          }}
+          onConfirm={() => void confirmDeleteCoach()}
         />
       ) : null}
     </div>
