@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
-import { getAppContextForUser } from '@/lib/auth/roles'
 import { getAuthenticatedUser } from '@/lib/auth/session'
+import { resolveCoachAccessForUser } from '@/services/role-access'
 
 export async function GET() {
   const user = await getAuthenticatedUser()
@@ -10,10 +10,11 @@ export async function GET() {
     return NextResponse.json({ authenticated: false, hasCoachAccess: false })
   }
 
-  const context = await getAppContextForUser(user)
+  const access = await resolveCoachAccessForUser(user)
 
   return NextResponse.json({
     authenticated: true,
-    hasCoachAccess: context.hasCoachAccess,
+    hasCoachAccess: access.ok,
+    errorCode: access.ok ? null : access.code,
   })
 }

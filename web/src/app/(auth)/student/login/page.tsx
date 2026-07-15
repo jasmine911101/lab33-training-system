@@ -14,11 +14,8 @@ export default async function StudentLoginPage({
 
   if (user) {
     const context = await getAppContextForUser(user)
-    if (context.role === 'student' && context.hasStudentAccess) {
+    if (context.hasStudentAccess) {
       redirect('/student')
-    }
-    if (context.role === 'coach' && context.hasCoachAccess) {
-      redirect('/coach')
     }
   }
 
@@ -37,7 +34,7 @@ export default async function StudentLoginPage({
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-stone-500">Student Portal</p>
           <h1 className="mt-4 text-4xl font-black tracking-tight">學員端登入</h1>
           <p className="mt-4 max-w-xl text-sm leading-7 text-stone-600 sm:text-base">
-            登入後會進入學員端頁面，再依照目前資料是否能匹配到 athlete 進行驗證，不會只靠登入入口決定身份。
+            登入後只會驗證 `public.athletes` 的學員身份；同一個人也可以同時擁有教練身份。
           </p>
         </section>
         <section className="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-sm">

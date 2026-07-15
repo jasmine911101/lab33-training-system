@@ -20,8 +20,8 @@ export function ProfileStatusCard({
         <Link href={loginHref} className="lab-btn-primary">
           {loginLabel}
         </Link>
-        <Link href="/dashboard" className="lab-btn-secondary">
-          回到身份檢查
+        <Link href="/" className="lab-btn-secondary">
+          回首頁
         </Link>
       </div>
     </div>

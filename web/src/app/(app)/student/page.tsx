@@ -73,7 +73,7 @@ export default async function StudentHomePage() {
         userEmail={studentProfile.email ?? context.user.email ?? null}
         sport={studentProfile.sport ?? null}
         mustChangePassword={requiresPasswordReset}
-        allowPasswordManagement={!context.isGoogleSession}
+        allowPasswordManagement
       />
 
       <section className="mt-6">

@@ -18,7 +18,7 @@ type RegisterCoachPayload = {
   email: string
   password: string
   confirmPassword: string
-  inviteCode: string
+  registrationCode: string
 }
 
 type CreatedCoach = {
@@ -62,15 +62,15 @@ async function findCoachProfileByEmail(email: string) {
 
 export function getCoachRegistrationAvailability() {
   return {
-    inviteCodeConfigured: Boolean(serverEnv.coachInviteCode),
+    headCoachRegistrationCodeConfigured: Boolean(serverEnv.headCoachRegistrationCode),
     serviceRoleConfigured: Boolean(serverEnv.supabaseServiceRoleKey),
   }
 }
 
 export async function registerCoachAccount(payload: RegisterCoachPayload): Promise<AdminMutationResult<CreatedCoach>> {
   const availability = getCoachRegistrationAvailability()
-  if (!availability.inviteCodeConfigured) {
-    return { error: '目前未開放教練自助註冊。請先設定 COACH_INVITE_CODE。' }
+  if (!availability.headCoachRegistrationCodeConfigured) {
+    return { error: '目前未開放總教練註冊。請先設定 HEAD_COACH_REGISTRATION_CODE。' }
   }
 
   const admin = createAdminClient()
@@ -82,7 +82,7 @@ export async function registerCoachAccount(payload: RegisterCoachPayload): Promi
   const email = normalizeEmail(payload.email)
   const password = payload.password
   const confirmPassword = payload.confirmPassword
-  const inviteCode = payload.inviteCode.trim()
+  const registrationCode = payload.registrationCode.trim()
 
   if (!name || !email) {
     return { error: '請先輸入姓名和 Email。' }
@@ -96,8 +96,8 @@ export async function registerCoachAccount(payload: RegisterCoachPayload): Promi
     return { error: '兩次輸入的 Password 不一致。' }
   }
 
-  if (inviteCode !== serverEnv.coachInviteCode) {
-    return { error: '教練邀請碼不正確。' }
+  if (registrationCode !== serverEnv.headCoachRegistrationCode) {
+    return { error: '總教練註冊碼不正確。' }
   }
 
   const existingCoach = await findCoachProfileByEmail(email)
@@ -130,7 +130,7 @@ export async function registerCoachAccount(payload: RegisterCoachPayload): Promi
       name,
       email,
       user_id: data.user.id,
-      is_head_coach: serverEnv.headCoachEmails.includes(email),
+      is_head_coach: true,
     })
 
     if (insertCoachError) {
@@ -142,7 +142,7 @@ export async function registerCoachAccount(payload: RegisterCoachPayload): Promi
         email,
         userId: data.user.id,
       },
-      message: '教練帳號已建立。',
+      message: '總教練帳號已建立。',
     }
   } catch (error) {
     const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()

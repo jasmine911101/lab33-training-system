@@ -31,6 +31,9 @@ export async function POST(request: Request) {
     {
       coach: result.data,
       message: result.message ?? '已新增教練。',
+      authAccountStatus: result.authAccountStatus ?? null,
+      tempPassword: result.tempPassword ?? null,
+      temporaryPassword: result.tempPassword ?? null,
     },
     { status: 201 },
   )

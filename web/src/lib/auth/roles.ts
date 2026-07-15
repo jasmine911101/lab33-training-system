@@ -30,9 +30,8 @@ export async function getAppContextForUser(user: User): Promise<AppContext> {
   const authProvider = getAuthProviderForUser(user)
 
   let role: AppRole = 'unknown'
-  if (hasCoachAccess && !hasStudentAccess) role = 'coach'
-  if (!hasCoachAccess && hasStudentAccess) role = 'student'
-  if (hasCoachAccess && hasStudentAccess) role = 'conflict'
+  if (hasCoachAccess) role = 'coach'
+  else if (hasStudentAccess) role = 'student'
 
   return {
     user,
@@ -55,9 +54,8 @@ export async function detectAppRole(userId: string, email?: string | null): Prom
   const hasCoachAccess = Boolean(coachProfile)
   const hasStudentAccess = Boolean(studentProfile)
 
-  if (hasCoachAccess && !hasStudentAccess) return 'coach'
-  if (!hasCoachAccess && hasStudentAccess) return 'student'
-  if (hasCoachAccess && hasStudentAccess) return 'conflict'
+  if (hasCoachAccess) return 'coach'
+  if (hasStudentAccess) return 'student'
   return 'unknown'
 }
 
@@ -65,20 +63,20 @@ export async function requireCoachAccess(loginPath: string) {
   const user = await requireSession(loginPath)
   const context = await getAppContextForUser(user)
 
-  if (context.role === 'coach' && context.hasCoachAccess) {
+  if (context.hasCoachAccess && context.coachProfile) {
     return context
   }
 
-  redirect('/dashboard')
+  redirect('/coach/login')
 }
 
 export async function requireStudentAccess(loginPath: string) {
   const user = await requireSession(loginPath)
   const context = await getAppContextForUser(user)
 
-  if (context.role === 'student' && context.hasStudentAccess) {
+  if (context.hasStudentAccess && context.studentProfile) {
     return context
   }
 
-  redirect('/dashboard')
+  redirect('/student/login')
 }

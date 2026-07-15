@@ -6,6 +6,7 @@ import { getAppContextForUser } from '@/lib/auth/roles'
 export default async function HomePage() {
   const user = await getAuthenticatedUser()
   const context = user ? await getAppContextForUser(user) : null
+  const signedInHref = context?.hasCoachAccess ? '/coach' : context?.hasStudentAccess ? '/student' : '/'
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f6efe5_0%,#fbfaf7_55%,#ffffff_100%)] px-4 py-10 text-stone-900 sm:px-6 lg:px-8">
@@ -22,7 +23,7 @@ export default async function HomePage() {
               </p>
               <div className="flex flex-wrap gap-3">
                 {user ? (
-                  <Link href="/dashboard" className="rounded-full bg-stone-900 px-5 py-3 font-semibold text-white transition hover:bg-stone-700">
+                  <Link href={signedInHref} className="rounded-full bg-stone-900 px-5 py-3 font-semibold text-white transition hover:bg-stone-700">
                     前往我的 Dashboard
                   </Link>
                 ) : (
@@ -49,8 +50,12 @@ export default async function HomePage() {
                   <dd className="truncate text-right">{user?.email ?? '-'}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt>偵測角色</dt>
-                  <dd>{context?.role ?? 'unknown'}</dd>
+                  <dt>教練權限</dt>
+                  <dd>{context?.hasCoachAccess ? '有' : '無'}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt>學員權限</dt>
+                  <dd>{context?.hasStudentAccess ? '有' : '無'}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt>舊版系統</dt>

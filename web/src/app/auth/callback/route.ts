@@ -43,6 +43,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(failureUrl)
   }
 
+  if (intent === 'recovery') {
+    response.headers.set('Location', new URL('/reset-password', request.url).toString())
+    return response
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser()

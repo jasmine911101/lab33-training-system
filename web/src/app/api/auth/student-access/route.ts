@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
-import { getAppContextForUser } from '@/lib/auth/roles'
 import { getAuthenticatedUser } from '@/lib/auth/session'
+import { resolveStudentAccessForUser } from '@/services/role-access'
 
 export async function GET() {
   const user = await getAuthenticatedUser()
@@ -10,10 +10,11 @@ export async function GET() {
     return NextResponse.json({ authenticated: false, hasStudentAccess: false })
   }
 
-  const context = await getAppContextForUser(user)
+  const access = await resolveStudentAccessForUser(user)
 
   return NextResponse.json({
     authenticated: true,
-    hasStudentAccess: context.hasStudentAccess,
+    hasStudentAccess: access.ok,
+    errorCode: access.ok ? null : access.code,
   })
 }

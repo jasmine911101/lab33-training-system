@@ -10,8 +10,8 @@ export function BlockTaxonomyErrorState({ title, description }: { title: string;
         <Link href="/coach/blocks" className="lab-btn-primary">
           回到板塊管理
         </Link>
-        <Link href="/dashboard" className="lab-btn-secondary">
-          回到 Dashboard
+        <Link href="/coach" className="lab-btn-secondary">
+          回到教練端
         </Link>
       </div>
     </div>

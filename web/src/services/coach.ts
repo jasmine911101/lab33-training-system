@@ -49,7 +49,7 @@ export async function getCoachProfileForUser(userId: string, email?: string | nu
 
   if (email) {
     const coachByEmail = await findCoachByEmail(email)
-    if (coachByEmail) return coachByEmail
+    if (coachByEmail && (!coachByEmail.user_id || coachByEmail.user_id === userId)) return coachByEmail
   }
 
   return null

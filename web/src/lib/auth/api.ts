@@ -15,7 +15,7 @@ export async function requireCoachApiContext() {
 
   const context = await getAppContextForUser(user)
 
-  if (context.role !== 'coach' || !context.hasCoachAccess || !context.coachProfile) {
+  if (!context.hasCoachAccess || !context.coachProfile) {
     return {
       context: null,
       response: NextResponse.json({ error: '這個帳號沒有教練端權限。' }, { status: 403 }),

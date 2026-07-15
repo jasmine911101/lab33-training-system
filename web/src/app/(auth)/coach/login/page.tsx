@@ -16,11 +16,8 @@ export default async function CoachLoginPage({
 
   if (user) {
     const context = await getAppContextForUser(user)
-    if (context.role === 'coach' && context.hasCoachAccess) {
+    if (context.hasCoachAccess) {
       redirect('/coach')
-    }
-    if (context.role === 'student' && context.hasStudentAccess) {
-      redirect('/student')
     }
   }
 
@@ -41,7 +38,7 @@ export default async function CoachLoginPage({
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-stone-300">Coach Portal</p>
           <h1 className="mt-4 text-4xl font-black tracking-tight">教練端登入</h1>
           <p className="mt-4 max-w-xl text-sm leading-7 text-stone-300 sm:text-base">
-            登入後會進入教練端頁面，再依照目前資料是否具備教練權限進行驗證，不會只靠登入入口決定身份。
+            登入後只會驗證 `public.coaches` 的教練身份；同一個人也可以同時擁有學員身份。
           </p>
         </section>
         <section className="grid gap-5 rounded-[2rem] bg-white p-6 text-stone-900 shadow-2xl">
@@ -55,10 +52,10 @@ export default async function CoachLoginPage({
             </div>
           </div>
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">註冊教練</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">建立總教練</p>
             <div className="mt-3">
               <CoachRegistrationForm
-                inviteCodeConfigured={registration.inviteCodeConfigured}
+                headCoachRegistrationCodeConfigured={registration.headCoachRegistrationCodeConfigured}
                 serviceRoleConfigured={registration.serviceRoleConfigured}
               />
             </div>

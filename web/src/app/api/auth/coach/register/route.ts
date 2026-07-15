@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     email: String(body.email ?? ''),
     password: String(body.password ?? ''),
     confirmPassword: String(body.confirmPassword ?? ''),
-    inviteCode: String(body.inviteCode ?? ''),
+    registrationCode: String(body.registrationCode ?? ''),
   })
 
   if (result.error || !result.data) {

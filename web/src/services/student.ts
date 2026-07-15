@@ -55,7 +55,9 @@ async function findStudentRowsByEmail(email: string) {
 }
 
 export async function getStudentProfileForUser(userId: string, email?: string | null) {
-  const emailRows = email ? await findStudentRowsByEmail(email) : []
+  const emailRows = email
+    ? (await findStudentRowsByEmail(email)).filter((row) => !row.user_id || row.user_id === userId)
+    : []
 
   if (userId) {
     const userRows = await findStudentRowsByUserId(userId)

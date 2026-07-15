@@ -1,7 +1,5 @@
 import 'server-only'
 
-import type { SupabaseClient } from '@supabase/supabase-js'
-
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -11,11 +9,13 @@ import {
   type ManagedAthleteRecord,
   type ManagedCoachRecord,
 } from '@/lib/types/coach-management'
+import {
+  createPasswordAuthUser,
+  generateTemporaryPassword,
+  listAuthUsersByEmail,
+  updateManagedAuthPassword,
+} from '@/services/managed-auth'
 import type { CoachProfile } from '@/services/coach'
-
-const TEMP_PASSWORD_PREFIX = 'LAB33-'
-const TEMP_PASSWORD_LENGTH = 12
-const PASSWORD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
 type CoachAthleteLink = {
   coach_id: number | null
@@ -37,6 +37,7 @@ type AdminMutationResult<T> = {
   error?: string
   message?: string
   tempPassword?: string
+  authAccountStatus?: 'created' | 'reused'
 }
 
 type CoachDeleteResult = {
@@ -46,12 +47,6 @@ type CoachDeleteResult = {
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
-}
-
-function generateTempPassword() {
-  const bytes = crypto.getRandomValues(new Uint32Array(TEMP_PASSWORD_LENGTH))
-  const body = Array.from(bytes, (value) => PASSWORD_ALPHABET[value % PASSWORD_ALPHABET.length]).join('')
-  return `${TEMP_PASSWORD_PREFIX}${body}`
 }
 
 async function fetchCoachDirectory() {
@@ -234,31 +229,6 @@ async function ensureServiceRoleClient() {
   return { admin, error: null }
 }
 
-async function listAuthUsersByEmail(admin: SupabaseClient, email: string) {
-  const normalizedEmail = normalizeEmail(email)
-
-  for (let page = 1; page <= 10; page += 1) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 100 })
-    if (error) throw error
-
-    const users = data.users ?? []
-    const matched = users.find((user) => (user.email ?? '').toLowerCase() === normalizedEmail)
-    if (matched) return matched
-    if (users.length < 100) break
-  }
-
-  return null
-}
-
-async function resetAthleteTempPassword(admin: SupabaseClient, userId: string, tempPassword: string) {
-  const { data, error } = await admin.auth.admin.updateUserById(userId, {
-    password: tempPassword,
-  })
-
-  if (error) throw error
-  return data.user
-}
-
 async function hydrateSingleAthlete(athleteId: number) {
   const supabase = await createClient()
   const { data: athlete, error } = await supabase
@@ -308,6 +278,23 @@ export async function createAthleteForCoach(
   }
 
   try {
+    const existingAuthUser = await listAuthUsersByEmail(admin, email)
+    let temporaryPassword: string | undefined
+    let authUserId: string
+    const authAccountStatus: AdminMutationResult<ManagedAthleteRecord>['authAccountStatus'] = existingAuthUser ? 'reused' : 'created'
+
+    if (existingAuthUser) {
+      authUserId = existingAuthUser.id
+    } else {
+      temporaryPassword = generateTemporaryPassword()
+      const createdAuthUser = await createPasswordAuthUser(admin, {
+        name,
+        email,
+        password: temporaryPassword,
+      })
+      authUserId = createdAuthUser.id
+    }
+
     const { data: insertedAthlete, error: insertError } = await admin
       .from('athletes')
       .insert({
@@ -315,8 +302,8 @@ export async function createAthleteForCoach(
         email,
         sport,
         level,
-        user_id: null,
-        must_change_password: false,
+        user_id: authUserId,
+        must_change_password: authAccountStatus === 'created',
       })
       .select('id')
       .single()
@@ -354,7 +341,12 @@ export async function createAthleteForCoach(
 
     return {
       data: hydratedAthlete,
-      message: '已新增學員。學員之後請直接使用這個 Email 透過 Google 登入，系統會在第一次登入時自動綁定帳號。',
+      message:
+        authAccountStatus === 'created'
+          ? '學員建立成功，請將登入 Email 與暫時密碼提供給學員。'
+          : '學員建立成功。此 Email 已有 LAB33 登入帳號，因此沒有建立新的暫時密碼。',
+      tempPassword: temporaryPassword,
+      authAccountStatus,
     }
   } catch (error) {
     return {
@@ -369,7 +361,7 @@ export async function resetTemporaryPasswordForAthlete(
   const { admin, error: adminError } = await ensureServiceRoleClient()
   if (!admin) return { error: adminError ?? '缺少 service role。' }
 
-  const tempPassword = generateTempPassword()
+  const tempPassword = generateTemporaryPassword()
 
   try {
     let authUserId = athlete.user_id
@@ -377,7 +369,7 @@ export async function resetTemporaryPasswordForAthlete(
 
     if (authUserId) {
       try {
-        await resetAthleteTempPassword(admin, authUserId, tempPassword)
+        await updateManagedAuthPassword(admin, authUserId, tempPassword)
       } catch (error) {
         const text = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
         if (!text.includes('user not found')) {
@@ -390,7 +382,7 @@ export async function resetTemporaryPasswordForAthlete(
     if (!authUserId) {
       const existingAuthUser = athlete.email ? await listAuthUsersByEmail(admin, athlete.email) : null
       if (existingAuthUser) {
-        await resetAthleteTempPassword(admin, existingAuthUser.id, tempPassword)
+        await updateManagedAuthPassword(admin, existingAuthUser.id, tempPassword)
         authUserId = existingAuthUser.id
         message = '已連結既有 Auth 帳號，並重設臨時密碼。'
       } else {
@@ -532,12 +524,36 @@ export async function createCoachForHeadCoach(
     return { error: '這個 Email 已經存在，不能重複建立教練。' }
   }
 
+  let authUserId: string
+  let tempPassword: string | undefined
+  let authAccountStatus: AdminMutationResult<ManagedCoachRecord>['authAccountStatus'] = 'reused'
+
+  try {
+    const existingAuthUser = await listAuthUsersByEmail(admin, email)
+    if (existingAuthUser) {
+      authUserId = existingAuthUser.id
+    } else {
+      tempPassword = generateTemporaryPassword()
+      const createdAuthUser = await createPasswordAuthUser(admin, {
+        name,
+        email,
+        password: tempPassword,
+      })
+      authUserId = createdAuthUser.id
+      authAccountStatus = 'created'
+    }
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : '建立或查詢教練登入帳號失敗。',
+    }
+  }
+
   const { data: insertedCoach, error: insertError } = await admin
     .from('coaches')
     .insert({
       name,
       email,
-      user_id: null,
+      user_id: authUserId,
       is_head_coach: false,
     })
     .select('id, user_id, name, email, is_head_coach, created_at')
@@ -552,7 +568,68 @@ export async function createCoachForHeadCoach(
       ...(insertedCoach as CoachDirectoryEntry),
       managedAthleteCount: 0,
     },
-    message: '已新增教練。這位教練之後請使用這個 Google Email 登入，系統會在第一次登入時自動綁定 user_id。',
+    message:
+      authAccountStatus === 'created'
+        ? '已新增教練，請將登入 Email 與暫時密碼提供給教練。'
+        : '已新增教練。此 Email 已有 LAB33 登入帳號，因此沒有建立新的暫時密碼。',
+    tempPassword,
+    authAccountStatus,
+  }
+}
+
+export async function resetTemporaryPasswordForCoach(
+  actor: CoachProfile,
+  coachId: number,
+): Promise<AdminMutationResult<ManagedCoachRecord>> {
+  if (!actor.is_head_coach) {
+    return { error: '只有總教練可以重設教練暫時密碼。' }
+  }
+
+  if (actor.id === coachId) {
+    return { error: '基於安全考量，目前不支援重設正在登入中的自己。' }
+  }
+
+  const { admin, error: adminError } = await ensureServiceRoleClient()
+  if (!admin) return { error: adminError ?? '缺少 service role。' }
+
+  const { data: targetCoach, error: targetCoachError } = await admin
+    .from('coaches')
+    .select('id, user_id, name, email, is_head_coach, created_at')
+    .eq('id', coachId)
+    .maybeSingle()
+
+  if (targetCoachError) return { error: targetCoachError.message }
+  if (!targetCoach) return { error: '找不到這位教練。' }
+  if (!targetCoach.user_id) {
+    return { error: '這位教練尚未綁定登入帳號，無法重設暫時密碼。' }
+  }
+
+  const tempPassword = generateTemporaryPassword()
+
+  try {
+    await updateManagedAuthPassword(admin, targetCoach.user_id, tempPassword)
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : '重設教練暫時密碼失敗。',
+    }
+  }
+
+  const { count, error: countError } = await admin
+    .from('coach_athletes')
+    .select('id', { count: 'exact', head: true })
+    .eq('coach_id', coachId)
+
+  if (countError) {
+    return { error: countError.message }
+  }
+
+  return {
+    data: {
+      ...(targetCoach as CoachDirectoryEntry),
+      managedAthleteCount: count ?? 0,
+    },
+    message: '已重設教練暫時密碼。',
+    tempPassword,
   }
 }
 

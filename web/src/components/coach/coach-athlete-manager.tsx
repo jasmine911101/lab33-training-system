@@ -48,6 +48,16 @@ type CoachDeleteDialogState = {
   coach: ManagedCoachRecord
 }
 
+type AuthAccountStatus = 'created' | 'reused'
+
+type TemporaryCredentialDialogState = {
+  title: string
+  email: string
+  temporaryPassword?: string | null
+  message: string
+  reminder: string
+}
+
 function buildFilterOptions(assignableCoaches: CoachDirectoryEntry[], isHeadCoach: boolean) {
   const sorted = [...assignableCoaches].sort((left, right) => coachDisplayName(left).localeCompare(coachDisplayName(right), 'zh-Hant'))
 
@@ -75,6 +85,57 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit) {
   }
 
   return (payload ?? {}) as ApiSuccess<T>
+}
+
+function TemporaryCredentialDialog({
+  state,
+  onClose,
+}: {
+  state: TemporaryCredentialDialogState
+  onClose: () => void
+}) {
+  const hasPassword = Boolean(state.temporaryPassword)
+  const accountAndPassword = `Email: ${state.email}${state.temporaryPassword ? `\nTemporary Password: ${state.temporaryPassword}` : ''}`
+
+  async function copyText(text: string) {
+    await navigator.clipboard.writeText(text)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4">
+      <div className="w-full max-w-xl rounded-[1.5rem] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.18)] sm:p-7">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="lab-eyebrow">Account Access</p>
+            <h3 className="mt-3 text-2xl font-bold text-slate-900">{state.title}</h3>
+          </div>
+          <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={onClose}>
+            關閉
+          </button>
+        </div>
+
+        <div className="mt-6 space-y-4 rounded-[1.25rem] border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-700">
+          <p className="font-semibold text-slate-900">{state.message}</p>
+          <p>Email：<span className="font-mono text-slate-900">{state.email}</span></p>
+          {hasPassword ? (
+            <p>暫時密碼：<span className="font-mono text-slate-900">{state.temporaryPassword}</span></p>
+          ) : null}
+          <p className="leading-7 text-slate-600">{state.reminder}</p>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          {hasPassword ? (
+            <button type="button" className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" onClick={() => void copyText(state.temporaryPassword ?? '')}>
+              複製密碼
+            </button>
+          ) : null}
+          <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => void copyText(accountAndPassword)}>
+            {hasPassword ? '複製帳號與密碼' : '複製帳號'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function CreateAthleteSection({
@@ -312,7 +373,7 @@ function CoachEditorDialog({
             <p className="mt-3 text-sm leading-7 text-slate-600">
               {isEditing
                 ? '只會更新 public.coaches 的教練資料，不會自動修改 Google Auth 帳號。'
-                : '只建立 public.coaches 資料，第一次 Google 登入時才會自動綁定 user_id。'}
+                : '會建立教練資料，並建立或重用同 Email 的 LAB33 Auth 登入帳號。'}
             </p>
           </div>
           <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={onClose}>
@@ -442,6 +503,7 @@ function CoachManagementSection({
   currentCoachId,
   onCreate,
   onEdit,
+  onResetPassword,
   onDeleteRequest,
   deletingCoachId,
   feedbackMessage,
@@ -455,6 +517,7 @@ function CoachManagementSection({
   currentCoachId: number
   onCreate: () => void
   onEdit: (coach: ManagedCoachRecord) => void
+  onResetPassword: (coach: ManagedCoachRecord) => void
   onDeleteRequest: (coach: ManagedCoachRecord) => void
   deletingCoachId: number | null
   feedbackMessage: string | null
@@ -548,6 +611,15 @@ function CoachManagementSection({
                             onClick={() => onEdit(coach)}
                           >
                             編輯
+                          </button>
+                          <button
+                            type="button"
+                            className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
+                            onClick={() => onResetPassword(coach)}
+                            disabled={deletingCoachId === coach.id || coach.id === currentCoachId}
+                            title={coach.id === currentCoachId ? '基於安全考量，不支援重設正在登入中的自己' : undefined}
+                          >
+                            重設暫時密碼
                           </button>
                           <button
                             type="button"
@@ -1018,6 +1090,7 @@ export function CoachAthleteManager({
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
   const [resetPasswordFeedback, setResetPasswordFeedback] = useState<{ email: string; password: string; message: string } | null>(null)
   const [resetPasswordError, setResetPasswordError] = useState<string | null>(null)
+  const [credentialDialog, setCredentialDialog] = useState<TemporaryCredentialDialogState | null>(null)
   const [assignmentDialog, setAssignmentDialog] = useState<AssignmentDialogState | null>(null)
   const [assignmentSaving, setAssignmentSaving] = useState(false)
   const [assignmentError, setAssignmentError] = useState<string | null>(null)
@@ -1058,7 +1131,13 @@ export function CoachAthleteManager({
     setCreateSuccess(null)
 
     try {
-      const payload = await requestJson<{ athlete: ManagedAthleteRecord }>(`/api/coach/athletes`, {
+      const payload = await requestJson<{
+        athlete: ManagedAthleteRecord
+        authAccountStatus?: AuthAccountStatus | null
+        tempPassword?: string | null
+        temporaryPassword?: string | null
+        message?: string
+      }>(`/api/coach/athletes`, {
         method: 'POST',
         body: JSON.stringify({
           name: createName,
@@ -1089,6 +1168,20 @@ export function CoachAthleteManager({
         )
       }
       setCreateSuccess(payload.message ?? '已新增學員。')
+      const temporaryPassword = payload.tempPassword ?? payload.temporaryPassword ?? null
+      setCredentialDialog({
+        title: '學員建立成功',
+        email: payload.athlete.email ?? createEmail.trim().toLowerCase(),
+        temporaryPassword,
+        message:
+          payload.authAccountStatus === 'created' && temporaryPassword
+            ? '系統已建立新的 LAB33 Auth 帳號。'
+            : '此 Email 已有 LAB33 登入帳號，因此沒有建立新的暫時密碼。',
+        reminder:
+          payload.authAccountStatus === 'created' && temporaryPassword
+            ? '請將此帳密提供給學員。學員可用 Email + Password 登入，也可以使用相同 Email 的 Google 帳號登入。'
+            : '可使用原本 Email + Password 或相同 Email 的 Google 登入；若忘記原密碼，請使用「重設學員密碼」功能。',
+      })
       setCreateName('')
       setCreateEmail('')
       setCreateSport('')
@@ -1170,6 +1263,13 @@ export function CoachAthleteManager({
           password: payload.tempPassword,
           message: payload.message ?? '已重設臨時密碼。',
         })
+        setCredentialDialog({
+          title: '已重設學員暫時密碼',
+          email: payload.athlete.email ?? athlete.email ?? '-',
+          temporaryPassword: payload.tempPassword,
+          message: payload.message ?? '已重設學員暫時密碼。',
+          reminder: '請安全地將帳密提供給該學員。新暫時密碼登入後，學員可以立即修改密碼。',
+        })
       }
     } catch (requestError) {
       setResetPasswordError(requestError instanceof Error ? requestError.message : '重設臨時密碼失敗。')
@@ -1242,7 +1342,13 @@ export function CoachAthleteManager({
 
     try {
       if (coachEditor.coachId == null) {
-        const payload = await requestJson<{ coach: ManagedCoachRecord; message?: string }>(`/api/coach/coaches`, {
+        const payload = await requestJson<{
+          coach: ManagedCoachRecord
+          message?: string
+          authAccountStatus?: AuthAccountStatus | null
+          tempPassword?: string | null
+          temporaryPassword?: string | null
+        }>(`/api/coach/coaches`, {
           method: 'POST',
           body: JSON.stringify({
             name: coachEditor.name,
@@ -1255,6 +1361,20 @@ export function CoachAthleteManager({
         setCoachDirectory(nextCoaches.filter((coach) => coach.is_head_coach !== true))
         applyCoachCountToAthletes(nextCoaches)
         setCoachEditorSuccess(payload.message ?? '已新增教練。')
+        const temporaryPassword = payload.tempPassword ?? payload.temporaryPassword ?? null
+        setCredentialDialog({
+          title: '教練建立成功',
+          email: payload.coach.email ?? coachEditor.email.trim().toLowerCase(),
+          temporaryPassword,
+          message:
+            payload.authAccountStatus === 'created' && temporaryPassword
+              ? '系統已建立新的 LAB33 Auth 帳號。'
+              : '此 Email 已有 LAB33 登入帳號，因此沒有建立新的暫時密碼。',
+          reminder:
+            payload.authAccountStatus === 'created' && temporaryPassword
+              ? '請將此帳密提供給教練。教練可用 Email + Password 登入，也可以使用相同 Email 的 Google 帳號登入。'
+              : '可使用原本 Email + Password 或相同 Email 的 Google 登入；若忘記原密碼，請由總教練重設暫時密碼。',
+        })
         setCoachEditor({
           coachId: null,
           name: '',
@@ -1289,6 +1409,42 @@ export function CoachAthleteManager({
     setCoachDeleteError(null)
     setCoachDeleteSuccess(null)
     setCoachDeleteDialog({ coach })
+  }
+
+  async function handleResetCoachPassword(coach: ManagedCoachRecord) {
+    const confirmed = window.confirm(`確認要重設 ${coachDisplayName(coach)} 的暫時密碼嗎？原密碼將失效。`)
+    if (!confirmed) return
+
+    setCoachActionLoadingId(coach.id)
+    setCoachDeleteError(null)
+    setCoachDeleteSuccess(null)
+
+    try {
+      const payload = await requestJson<{ coach: ManagedCoachRecord; tempPassword?: string; temporaryPassword?: string | null; message?: string }>(
+        `/api/coach/coaches/${coach.id}/reset-password`,
+        {
+          method: 'POST',
+          body: JSON.stringify({}),
+        },
+      )
+
+      const temporaryPassword = payload.tempPassword ?? payload.temporaryPassword ?? null
+      if (temporaryPassword) {
+        setCredentialDialog({
+          title: '已重設教練暫時密碼',
+          email: payload.coach.email ?? coach.email ?? '-',
+          temporaryPassword,
+          message: payload.message ?? '已重設教練暫時密碼。',
+          reminder: '請安全地將帳密提供給該教練。新暫時密碼登入後，教練可以立即修改密碼。',
+        })
+        setCoachDeleteSuccess(payload.message ?? '已重設教練暫時密碼。')
+      }
+    } catch (requestError) {
+      setCoachDeleteError(requestError instanceof Error ? requestError.message : '重設教練暫時密碼失敗。')
+      setIsCoachManagementOpen(true)
+    } finally {
+      setCoachActionLoadingId(null)
+    }
   }
 
   async function confirmDeleteCoach() {
@@ -1372,6 +1528,7 @@ export function CoachAthleteManager({
           currentCoachId={currentCoachId}
           onCreate={openCreateCoachDialog}
           onEdit={openEditCoachDialog}
+          onResetPassword={handleResetCoachPassword}
           onDeleteRequest={handleDeleteCoach}
           deletingCoachId={coachActionLoadingId}
           feedbackMessage={coachDeleteSuccess}
@@ -1441,6 +1598,13 @@ export function CoachAthleteManager({
             setCoachDeleteError(null)
           }}
           onConfirm={() => void confirmDeleteCoach()}
+        />
+      ) : null}
+
+      {credentialDialog ? (
+        <TemporaryCredentialDialog
+          state={credentialDialog}
+          onClose={() => setCredentialDialog(null)}
         />
       ) : null}
     </div>

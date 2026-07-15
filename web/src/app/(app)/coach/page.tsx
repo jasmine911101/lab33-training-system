@@ -50,7 +50,7 @@ export default async function CoachHomePage() {
         initialCoaches={managementSnapshot.coaches}
         assignableCoaches={managementSnapshot.assignableCoaches}
         isHeadCoach={coachProfile.is_head_coach === true}
-        allowPasswordManagement={!context.isGoogleSession}
+        allowPasswordManagement
       />
     </AppShell>
   )
