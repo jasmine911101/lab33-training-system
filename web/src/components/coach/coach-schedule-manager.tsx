@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { normalizeExternalUrl } from '@/lib/external-url'
 import { GENERAL_EVENT_TYPES, TRAINING_CATEGORIES } from '@/lib/types/schedule-management'
+import { AssignmentCalendarPreview, CycleBadge } from '@/components/schedule/cycle-info'
 import type {
   BlockTaxonomyAgeGroupRecord,
   BlockTaxonomySportRecord,
@@ -14,7 +15,20 @@ import type { AthleteScheduleBundle, AssignmentDetail, BlockRecord, GeneralEvent
 const UNCATEGORIZED_SELECTOR = '__uncategorized__'
 
 type ScheduleItem =
-  | { kind: 'assignment'; id: string; recordId: number; startDate: string; endDate: string; title: string; meta: string; previewTop: string; previewBottom: string }
+  | {
+      kind: 'assignment'
+      id: string
+      recordId: number
+      startDate: string
+      endDate: string
+      title: string
+      meta: string
+      weekLabel: string
+      cycleName: string
+      eventName: string
+      categoryLabel: string
+      blockCode: string
+    }
   | { kind: 'event'; id: string; recordId: number; startDate: string; endDate: string; title: string; meta: string; previewTop: string; previewBottom?: string }
 
 type CoachScheduleManagerProps = {
@@ -166,11 +180,6 @@ function blockNameFromLabel(label: string) {
   const [, ...rest] = label.split('|')
   const extracted = rest.join('|').trim()
   return extracted || label.trim() || '未命名板塊'
-}
-
-function compactWeekLabel(weekLabel: string) {
-  const matched = weekLabel.match(/(\d+)/)
-  return matched ? `W${matched[1]}` : 'W-'
 }
 
 function truncateText(value: string, maxLength: number) {
@@ -567,7 +576,7 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
             <div className="min-w-0 flex-1">
               <h3 className="text-2xl font-bold text-slate-900">{resolvedBlockName}</h3>
               <div className="mt-3 flex flex-wrap gap-2">
-                <span className="lab-badge bg-slate-100 text-slate-700">{assignment.week_label}</span>
+                <CycleBadge weekLabel={assignment.week_label} cycleName={assignment.cycle_name} />
                 <span className="lab-badge bg-slate-100 text-slate-700">事件：{assignment.event_display_name || '-'}</span>
                 <span className="lab-badge bg-sky-100 text-sky-700">{assignment.category_label}</span>
                 <span className="lab-badge bg-amber-100 text-amber-800">{assignment.block_code || '未設定代號'}</span>
@@ -771,7 +780,7 @@ function DailyAssignmentSummaryCard({
         <div>
           <p className="text-base font-semibold text-slate-900">事件：{assignment.event_display_name || '未命名安排'}</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <span className="lab-badge bg-slate-100 text-slate-700">Week：{assignment.week_label.replace(/^Week\s*/i, '') || '-'}</span>
+            <CycleBadge weekLabel={assignment.week_label} cycleName={assignment.cycle_name} />
             <span className="lab-badge bg-sky-100 text-sky-700">分類：{assignment.category_label || '未分類'}</span>
             <span className="lab-badge bg-amber-100 text-amber-800">代號：{assignment.block_code || '無代號'}</span>
           </div>
@@ -1042,8 +1051,11 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
       endDate: assignment.end_date || assignment.start_date || assignment.date_range.split(' ~ ').slice(-1)[0] || todayIso(),
       title: assignment.event_display_name,
       meta: assignment.meta,
-      previewTop: `${compactWeekLabel(assignment.week_label)}・${truncateText(assignment.event_display_name || '未命名安排', 8)}`,
-      previewBottom: `${truncateText(assignment.category_label || '未分類', 6)}・${truncateText(assignment.block_code || '無代號', 10)}`,
+      weekLabel: assignment.week_label,
+      cycleName: assignment.cycle_name,
+      eventName: truncateText(assignment.event_display_name || '未命名安排', 8),
+      categoryLabel: truncateText(assignment.category_label || '未分類', 6),
+      blockCode: truncateText(assignment.block_code || '無代號', 10),
     }))
     const events = schedule.generalEvents.map((event) => ({
       kind: 'event' as const,
@@ -1158,6 +1170,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
       endDate: date,
       dayNum: weekdayFromIso(date),
       weekNum: marker?.weekNum ?? current.weekNum,
+      cycleGoal: marker?.note && !current.cycleGoal.trim() ? marker.note : current.cycleGoal,
     }))
     setEventForm((current) => ({ ...current, startDate: date, endDate: date }))
     setIsDayModalOpen(shouldOpenModal)
@@ -1184,7 +1197,11 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
     setError(null)
 
     if (rangeIncludes(selectedDate, normalized.startDate, normalized.endDate)) {
-      setAssignmentForm((current) => ({ ...current, weekNum: nextMarker.weekNum }))
+      setAssignmentForm((current) => ({
+        ...current,
+        weekNum: nextMarker.weekNum,
+        cycleGoal: nextMarker.note && !current.cycleGoal.trim() ? nextMarker.note : current.cycleGoal,
+      }))
     }
   }
 
@@ -1421,7 +1438,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                     >
                       {weekMarker ? (
                         <div
-                          className={`pointer-events-none absolute left-1 right-1 top-12 h-7 ${weekColor.bandClass} ${isWeekSegmentStart ? 'rounded-l-xl pl-1' : 'rounded-l-md'} ${isWeekSegmentEnd ? 'rounded-r-xl pr-1' : 'rounded-r-md'}`}
+                          className={`pointer-events-none absolute left-1 right-1 top-12 h-9 ${weekColor.bandClass} ${isWeekSegmentStart ? 'rounded-l-xl pl-1' : 'rounded-l-md'} ${isWeekSegmentEnd ? 'rounded-r-xl pr-1' : 'rounded-r-md'}`}
                         />
                       ) : null}
 
@@ -1431,8 +1448,13 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                             {cell.day}
                           </div>
                           {weekMarker ? (
-                            <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${weekColor.badgeClass}`}>
-                              W{weekMarker.weekNum}
+                            <span className={`inline-flex max-w-[6.25rem] flex-col rounded-xl px-2 py-1 text-[10px] font-semibold leading-3 ${weekColor.badgeClass}`}>
+                              <span>W{weekMarker.weekNum}</span>
+                              {weekMarker.note ? (
+                                <span className="mt-0.5 truncate text-[9px] opacity-90" title={weekMarker.note}>
+                                  {weekMarker.note}
+                                </span>
+                              ) : null}
                             </span>
                           ) : null}
                         </div>
@@ -1451,8 +1473,20 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                             className={`rounded-xl px-2.5 py-1.5 text-[11px] font-medium leading-4 ${item.kind === 'assignment' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'} ${cell.inCurrentMonth ? '' : 'opacity-70'}`}
                             title={`${item.title}｜${item.meta}`}
                           >
-                            <div className="truncate">{item.previewTop}</div>
-                            {item.previewBottom ? <div className="mt-0.5 truncate">{item.previewBottom}</div> : null}
+                            {item.kind === 'assignment' ? (
+                              <AssignmentCalendarPreview
+                                weekLabel={item.weekLabel}
+                                cycleName={item.cycleName}
+                                eventName={item.eventName}
+                                categoryLabel={item.categoryLabel}
+                                blockCode={item.blockCode}
+                              />
+                            ) : (
+                              <>
+                                <div className="truncate">{item.previewTop}</div>
+                                {item.previewBottom ? <div className="mt-0.5 truncate">{item.previewBottom}</div> : null}
+                              </>
+                            )}
                           </div>
                         ))}
                         {cell.items.length > 2 ? (
@@ -1578,7 +1612,12 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
               <div className="space-y-2"><label className="text-sm font-semibold text-slate-700">開始日期</label><input type="date" className="lab-input" value={assignmentForm.startDate} onChange={(event) => {
                 const nextDate = event.target.value
                 const marker = resolveWeekMarker(nextDate, weekMarkers)
-                setAssignmentForm((current) => ({ ...current, startDate: nextDate, weekNum: marker?.weekNum ?? current.weekNum }))
+                setAssignmentForm((current) => ({
+                  ...current,
+                  startDate: nextDate,
+                  weekNum: marker?.weekNum ?? current.weekNum,
+                  cycleGoal: marker?.note && !current.cycleGoal.trim() ? marker.note : current.cycleGoal,
+                }))
               }} /></div>
               <div className="space-y-2"><label className="text-sm font-semibold text-slate-700">結束日期</label><input type="date" className="lab-input" value={assignmentForm.endDate} onChange={(event) => setAssignmentForm((current) => ({ ...current, endDate: event.target.value }))} /></div>
             </div>

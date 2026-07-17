@@ -4,6 +4,7 @@ export type CoachDirectoryEntry = {
   name: string | null
   email: string | null
   is_head_coach: boolean | null
+  must_change_password?: boolean | null
   created_at?: string | null
 }
 

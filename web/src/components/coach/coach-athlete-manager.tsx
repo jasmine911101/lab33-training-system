@@ -140,6 +140,8 @@ function TemporaryCredentialDialog({
 
 function CreateAthleteSection({
   isHeadCoach,
+  currentCoachId,
+  currentCoachLabel,
   assignableCoaches,
   isCreateOpen,
   setIsCreateOpen,
@@ -157,6 +159,8 @@ function CreateAthleteSection({
   isCreating,
 }: {
   isHeadCoach: boolean
+  currentCoachId: number
+  currentCoachLabel: string
   assignableCoaches: CoachDirectoryEntry[]
   isCreateOpen: boolean
   setIsCreateOpen: React.Dispatch<React.SetStateAction<boolean>>
@@ -173,6 +177,30 @@ function CreateAthleteSection({
   createSuccess: string | null
   isCreating: boolean
 }) {
+  const createCoachOptions = useMemo(() => {
+    const seen = new Set<number>([currentCoachId])
+    return [
+      {
+        id: currentCoachId,
+        label: 'Assign to myself',
+        detail: currentCoachLabel,
+        isSelf: true,
+      },
+      ...assignableCoaches
+        .filter((coach) => {
+          if (seen.has(coach.id)) return false
+          seen.add(coach.id)
+          return true
+        })
+        .map((coach) => ({
+          id: coach.id,
+          label: coachDisplayName(coach),
+          detail: coach.is_head_coach ? '總教練' : '教練',
+          isSelf: false,
+        })),
+    ]
+  }, [assignableCoaches, currentCoachId, currentCoachLabel])
+
   return (
     <div className="w-full">
       <div className="flex justify-end">
@@ -204,10 +232,31 @@ function CreateAthleteSection({
               </div>
             </div>
 
-            {isHeadCoach ? (
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-slate-700">建立後直接指派給教練</p>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-700">建立後直接指派給教練</p>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {(isHeadCoach ? createCoachOptions : createCoachOptions.filter((coach) => coach.isSelf)).map((coach) => {
+                  const isChecked = isHeadCoach ? selectedCreateCoachId === coach.id : coach.isSelf
+                  return (
+                    <label
+                      key={coach.id}
+                      className="flex min-h-[4.25rem] cursor-pointer items-start gap-3 rounded-[1rem] border border-slate-200 px-4 py-3 text-sm text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                    >
+                      <input
+                        type="radio"
+                        name="create-athlete-coach"
+                        checked={isChecked}
+                        onChange={() => setSelectedCreateCoachId(coach.id)}
+                        className="mt-1"
+                      />
+                      <span className="space-y-1">
+                        <span className="block font-semibold text-slate-900">{coach.label}</span>
+                        <span className="block text-xs leading-6 text-slate-500">{coach.detail}</span>
+                      </span>
+                    </label>
+                  )
+                })}
+                {isHeadCoach ? (
                   <label className="flex min-h-[4.25rem] cursor-pointer items-start gap-3 rounded-[1rem] border border-slate-200 px-4 py-3 text-sm text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
                     <input
                       type="radio"
@@ -221,21 +270,9 @@ function CreateAthleteSection({
                       <span className="block text-xs leading-6 text-slate-500">建立後保持未指派，之後再轉給特定教練。</span>
                     </span>
                   </label>
-                  {assignableCoaches.map((coach) => (
-                    <label key={coach.id} className="flex min-h-[4.25rem] cursor-pointer items-start gap-3 rounded-[1rem] border border-slate-200 px-4 py-3 text-sm text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
-                      <input
-                        type="radio"
-                        name="create-athlete-coach"
-                        checked={selectedCreateCoachId === coach.id}
-                        onChange={() => setSelectedCreateCoachId(coach.id)}
-                        className="mt-1"
-                      />
-                      <span className="block leading-6">{coachDisplayName(coach)}</span>
-                    </label>
-                  ))}
-                </div>
+                ) : null}
               </div>
-            ) : null}
+            </div>
 
             {createError ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{createError}</p> : null}
             {createSuccess ? <p className="rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{createSuccess}</p> : null}
@@ -503,6 +540,8 @@ function CoachManagementSection({
   currentCoachId,
   onCreate,
   onEdit,
+  onPromote,
+  onDemote,
   onResetPassword,
   onDeleteRequest,
   deletingCoachId,
@@ -517,6 +556,8 @@ function CoachManagementSection({
   currentCoachId: number
   onCreate: () => void
   onEdit: (coach: ManagedCoachRecord) => void
+  onPromote: (coach: ManagedCoachRecord) => void
+  onDemote: (coach: ManagedCoachRecord) => void
   onResetPassword: (coach: ManagedCoachRecord) => void
   onDeleteRequest: (coach: ManagedCoachRecord) => void
   deletingCoachId: number | null
@@ -524,6 +565,7 @@ function CoachManagementSection({
   feedbackError: string | null
 }) {
   const filteredCoaches = useMemo(() => rankCoachesBySearch(coaches, search), [coaches, search])
+  const headCoachCount = useMemo(() => coaches.filter((coach) => coach.is_head_coach).length, [coaches])
 
   return (
     <article className="lab-card p-6 sm:p-7">
@@ -578,7 +620,7 @@ function CoachManagementSection({
                     <th className="border-b border-slate-200 px-6 py-4">姓名</th>
                     <th className="border-b border-slate-200 px-6 py-4">Email</th>
                     <th className="border-b border-slate-200 px-6 py-4">負責學員數</th>
-                    <th className="border-b border-slate-200 px-6 py-4">身分</th>
+                    <th className="border-b border-slate-200 px-6 py-4">Role</th>
                     <th className="border-b border-slate-200 px-6 py-4">建立日期</th>
                     <th className="border-b border-slate-200 px-6 py-4 text-right">操作</th>
                   </tr>
@@ -597,40 +639,68 @@ function CoachManagementSection({
                       </td>
                       <td className="border-b border-slate-100 px-6 py-4 last:border-b-0">
                         <span className={coach.is_head_coach ? 'lab-badge-warning' : 'lab-badge-info'}>
-                          {coach.is_head_coach ? '總教練' : '一般教練'}
+                          {coach.is_head_coach ? 'Head Coach' : 'Coach'}
                         </span>
                       </td>
                       <td className="border-b border-slate-100 px-6 py-4 text-sm text-slate-600 last:border-b-0">
                         {formatCreatedDate(coach.created_at)}
                       </td>
                       <td className="border-b border-slate-100 px-6 py-4 text-right last:border-b-0">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
-                            onClick={() => onEdit(coach)}
-                          >
-                            編輯
-                          </button>
-                          <button
-                            type="button"
-                            className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
-                            onClick={() => onResetPassword(coach)}
-                            disabled={deletingCoachId === coach.id || coach.id === currentCoachId}
-                            title={coach.id === currentCoachId ? '基於安全考量，不支援重設正在登入中的自己' : undefined}
-                          >
-                            重設暫時密碼
-                          </button>
-                          <button
-                            type="button"
-                            className="inline-flex min-h-10 items-center justify-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
-                            onClick={() => onDeleteRequest(coach)}
-                            disabled={deletingCoachId === coach.id || coach.id === currentCoachId}
-                            title={coach.id === currentCoachId ? '目前不支援刪除正在登入的總教練帳號' : undefined}
-                          >
-                            {deletingCoachId === coach.id ? '刪除中...' : '刪除'}
-                          </button>
-                        </div>
+                        <details className="relative inline-block text-left">
+                          <summary className="inline-flex min-h-10 cursor-pointer list-none items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-lg font-bold leading-none text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+                            ⋯
+                            <span className="sr-only">開啟教練操作選單</span>
+                          </summary>
+                          <div className="absolute right-0 z-40 mt-2 min-w-[13rem] rounded-[1rem] border border-slate-200 bg-white p-2 text-left shadow-[0_16px_32px_rgba(15,23,42,0.14)]">
+                            <button
+                              type="button"
+                              className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                              onClick={() => onEdit(coach)}
+                            >
+                              編輯
+                            </button>
+                            <button
+                              type="button"
+                              className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => onResetPassword(coach)}
+                              disabled={deletingCoachId === coach.id || coach.id === currentCoachId}
+                              title={coach.id === currentCoachId ? '基於安全考量，不支援重設正在登入中的自己' : undefined}
+                            >
+                              重設暫時密碼
+                            </button>
+                            {coach.is_head_coach ? (
+                              <button
+                                type="button"
+                                className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                onClick={() => onDemote(coach)}
+                                disabled={deletingCoachId === coach.id || headCoachCount <= 1}
+                                title={headCoachCount <= 1 ? '系統至少需要一位總教練' : undefined}
+                              >
+                                降級為一般教練
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                onClick={() => onPromote(coach)}
+                                disabled={deletingCoachId === coach.id}
+                              >
+                                設為總教練
+                              </button>
+                            )}
+                            {!(coach.is_head_coach === true && headCoachCount <= 1) ? (
+                              <button
+                                type="button"
+                                className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                onClick={() => onDeleteRequest(coach)}
+                                disabled={deletingCoachId === coach.id || coach.id === currentCoachId}
+                                title={coach.id === currentCoachId ? '目前不支援刪除正在登入的總教練帳號' : undefined}
+                              >
+                                {deletingCoachId === coach.id ? '刪除中...' : '刪除'}
+                              </button>
+                            ) : null}
+                          </div>
+                        </details>
                       </td>
                     </tr>
                   ))}
@@ -1358,7 +1428,7 @@ export function CoachAthleteManager({
 
         const nextCoaches = [...coaches, payload.coach]
         setCoaches(nextCoaches)
-        setCoachDirectory(nextCoaches.filter((coach) => coach.is_head_coach !== true))
+        setCoachDirectory(nextCoaches)
         applyCoachCountToAthletes(nextCoaches)
         setCoachEditorSuccess(payload.message ?? '已新增教練。')
         const temporaryPassword = payload.tempPassword ?? payload.temporaryPassword ?? null
@@ -1395,7 +1465,7 @@ export function CoachAthleteManager({
 
       const nextCoaches = coaches.map((coach) => (coach.id === payload.coach.id ? payload.coach : coach))
       setCoaches(nextCoaches)
-      setCoachDirectory(nextCoaches.filter((coach) => coach.is_head_coach !== true))
+      setCoachDirectory(nextCoaches)
       applyCoachCountToAthletes(nextCoaches)
       setCoachEditorSuccess(payload.message ?? '已更新教練資料。')
     } catch (requestError) {
@@ -1447,6 +1517,35 @@ export function CoachAthleteManager({
     }
   }
 
+  async function handleUpdateCoachRole(coach: ManagedCoachRecord, isHeadCoachRole: boolean) {
+    const actionLabel = isHeadCoachRole ? '設為總教練' : '降級為一般教練'
+    const confirmed = window.confirm(`確認要將 ${coachDisplayName(coach)} ${actionLabel}嗎？`)
+    if (!confirmed) return
+
+    setCoachActionLoadingId(coach.id)
+    setCoachDeleteError(null)
+    setCoachDeleteSuccess(null)
+
+    try {
+      const payload = await requestJson<{ coach: ManagedCoachRecord; message?: string }>(`/api/coach/coaches/${coach.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isHeadCoach: isHeadCoachRole }),
+      })
+
+      const nextCoaches = coaches.map((entry) => (entry.id === payload.coach.id ? payload.coach : entry))
+      setCoaches(nextCoaches)
+      setCoachDirectory(nextCoaches)
+      applyCoachCountToAthletes(nextCoaches)
+      setCoachDeleteSuccess(payload.message ?? '已更新教練身分。')
+      setIsCoachManagementOpen(true)
+    } catch (requestError) {
+      setCoachDeleteError(requestError instanceof Error ? requestError.message : '更新教練身分失敗。')
+      setIsCoachManagementOpen(true)
+    } finally {
+      setCoachActionLoadingId(null)
+    }
+  }
+
   async function confirmDeleteCoach() {
     if (!coachDeleteDialog) return
 
@@ -1461,7 +1560,7 @@ export function CoachAthleteManager({
 
       const nextCoaches = coaches.filter((entry) => entry.id !== payload.coachId)
       setCoaches(nextCoaches)
-      setCoachDirectory(nextCoaches.filter((coach) => coach.is_head_coach !== true))
+      setCoachDirectory(nextCoaches)
       setAthletes((current) =>
         current.map((athlete) => {
           if (!athlete.assignedCoachIds.includes(payload.coachId)) return athlete
@@ -1499,6 +1598,8 @@ export function CoachAthleteManager({
         createAthleteSlot={
           <CreateAthleteSection
             isHeadCoach={isHeadCoach}
+            currentCoachId={currentCoachId}
+            currentCoachLabel={coachName ? `${coachName}${userEmail ? ` (${userEmail})` : ''}` : (userEmail ?? '目前登入教練')}
             assignableCoaches={coachDirectory}
             isCreateOpen={isCreateOpen}
             setIsCreateOpen={setIsCreateOpen}
@@ -1528,6 +1629,8 @@ export function CoachAthleteManager({
           currentCoachId={currentCoachId}
           onCreate={openCreateCoachDialog}
           onEdit={openEditCoachDialog}
+          onPromote={(coach) => void handleUpdateCoachRole(coach, true)}
+          onDemote={(coach) => void handleUpdateCoachRole(coach, false)}
           onResetPassword={handleResetCoachPassword}
           onDeleteRequest={handleDeleteCoach}
           deletingCoachId={coachActionLoadingId}

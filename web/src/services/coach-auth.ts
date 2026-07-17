@@ -3,9 +3,8 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { serverEnv } from '@/lib/env.server'
+import { MIN_PASSWORD_LENGTH } from '@/lib/auth/password-rules'
 import { createAdminClient } from '@/lib/supabase/admin'
-
-const MIN_PASSWORD_LENGTH = 6
 
 type AdminMutationResult<T> = {
   data?: T
@@ -24,6 +23,13 @@ type RegisterCoachPayload = {
 type CreatedCoach = {
   email: string
   userId: string
+}
+
+type FirstHeadCoachAvailability = {
+  canRegisterFirstHeadCoach: boolean
+  headCoachCount: number | null
+  headCoachRegistrationCodeConfigured: boolean
+  serviceRoleConfigured: boolean
 }
 
 function normalizeEmail(email: string) {
@@ -60,22 +66,57 @@ async function findCoachProfileByEmail(email: string) {
   return data
 }
 
-export function getCoachRegistrationAvailability() {
+async function getHeadCoachCount(admin: SupabaseClient) {
+  const { count, error } = await admin
+    .from('coaches')
+    .select('id', { count: 'exact', head: true })
+    .eq('is_head_coach', true)
+
+  if (error) throw error
+  return count ?? 0
+}
+
+export async function getFirstHeadCoachRegistrationAvailability(): Promise<FirstHeadCoachAvailability> {
+  const admin = createAdminClient()
+  const serviceRoleConfigured = Boolean(admin)
+  const headCoachRegistrationCodeConfigured = Boolean(serverEnv.headCoachRegistrationCode)
+
+  if (!admin) {
+    return {
+      canRegisterFirstHeadCoach: false,
+      headCoachCount: null,
+      headCoachRegistrationCodeConfigured,
+      serviceRoleConfigured,
+    }
+  }
+
+  const headCoachCount = await getHeadCoachCount(admin)
+
   return {
-    headCoachRegistrationCodeConfigured: Boolean(serverEnv.headCoachRegistrationCode),
-    serviceRoleConfigured: Boolean(serverEnv.supabaseServiceRoleKey),
+    canRegisterFirstHeadCoach: headCoachCount === 0,
+    headCoachCount,
+    headCoachRegistrationCodeConfigured,
+    serviceRoleConfigured,
   }
 }
 
-export async function registerCoachAccount(payload: RegisterCoachPayload): Promise<AdminMutationResult<CreatedCoach>> {
-  const availability = getCoachRegistrationAvailability()
+export async function registerFirstHeadCoachAccount(payload: RegisterCoachPayload): Promise<AdminMutationResult<CreatedCoach>> {
+  const availability = await getFirstHeadCoachRegistrationAvailability()
+  if (!availability.serviceRoleConfigured) {
+    return { error: '尚未設定 SUPABASE_SERVICE_ROLE_KEY，無法建立第一位總教練。' }
+  }
+
   if (!availability.headCoachRegistrationCodeConfigured) {
-    return { error: '目前未開放總教練註冊。請先設定 HEAD_COACH_REGISTRATION_CODE。' }
+    return { error: '尚未設定 HEAD_COACH_REGISTRATION_CODE，無法建立第一位總教練。' }
   }
 
   const admin = createAdminClient()
   if (!admin) {
-    return { error: '尚未設定 SUPABASE_SERVICE_ROLE_KEY，無法建立教練帳號。' }
+    return { error: '尚未設定 SUPABASE_SERVICE_ROLE_KEY，無法建立第一位總教練。' }
+  }
+
+  if (!availability.canRegisterFirstHeadCoach) {
+    return { error: '第一位總教練已建立，不能再建立。' }
   }
 
   const name = payload.name.trim()
@@ -97,7 +138,12 @@ export async function registerCoachAccount(payload: RegisterCoachPayload): Promi
   }
 
   if (registrationCode !== serverEnv.headCoachRegistrationCode) {
-    return { error: '總教練註冊碼不正確。' }
+    return { error: '註冊碼錯誤' }
+  }
+
+  const latestHeadCoachCount = await getHeadCoachCount(admin)
+  if (latestHeadCoachCount > 0) {
+    return { error: '第一位總教練已建立，不能再建立。' }
   }
 
   const existingCoach = await findCoachProfileByEmail(email)
@@ -134,6 +180,7 @@ export async function registerCoachAccount(payload: RegisterCoachPayload): Promi
     })
 
     if (insertCoachError) {
+      await admin.auth.admin.deleteUser(data.user.id).catch(() => null)
       return { error: insertCoachError.message }
     }
 
@@ -155,3 +202,5 @@ export async function registerCoachAccount(payload: RegisterCoachPayload): Promi
     }
   }
 }
+
+export const registerCoachAccount = registerFirstHeadCoachAccount

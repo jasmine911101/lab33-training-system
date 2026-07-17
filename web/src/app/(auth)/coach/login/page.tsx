@@ -5,7 +5,7 @@ import { LoginForm } from '@/components/auth/login-form'
 import { getOAuthErrorMessage } from '@/lib/auth/oauth-errors'
 import { getAppContextForUser } from '@/lib/auth/roles'
 import { getAuthenticatedUser } from '@/lib/auth/session'
-import { getCoachRegistrationAvailability } from '@/services/coach-auth'
+import { getFirstHeadCoachRegistrationAvailability } from '@/services/coach-auth'
 
 export default async function CoachLoginPage({
   searchParams,
@@ -28,8 +28,7 @@ export default async function CoachLoginPage({
   const oauthMessageParam = Array.isArray(resolvedSearchParams.oauth_message)
     ? resolvedSearchParams.oauth_message[0]
     : resolvedSearchParams.oauth_message
-
-  const registration = getCoachRegistrationAvailability()
+  const headCoachAvailability = await getFirstHeadCoachRegistrationAvailability()
 
   return (
     <main className="min-h-screen bg-stone-950 px-4 py-10 text-white sm:px-6 lg:px-8">
@@ -51,15 +50,22 @@ export default async function CoachLoginPage({
               />
             </div>
           </div>
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">建立總教練</p>
-            <div className="mt-3">
-              <CoachRegistrationForm
-                headCoachRegistrationCodeConfigured={registration.headCoachRegistrationCodeConfigured}
-                serviceRoleConfigured={registration.serviceRoleConfigured}
-              />
+
+          {headCoachAvailability.canRegisterFirstHeadCoach ? (
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">建立第一位總教練</p>
+              <p className="mt-2 text-sm leading-7 text-slate-600">
+                只有系統尚未建立任何總教練時，才會顯示此初始化入口。
+              </p>
+              <div className="mt-3">
+                <CoachRegistrationForm
+                  canRegisterFirstHeadCoach={headCoachAvailability.canRegisterFirstHeadCoach}
+                  headCoachRegistrationCodeConfigured={headCoachAvailability.headCoachRegistrationCodeConfigured}
+                  serviceRoleConfigured={headCoachAvailability.serviceRoleConfigured}
+                />
+              </div>
             </div>
-          </div>
+          ) : null}
         </section>
       </div>
     </main>

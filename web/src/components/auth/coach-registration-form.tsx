@@ -23,11 +23,16 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit) {
 }
 
 type CoachRegistrationFormProps = {
+  canRegisterFirstHeadCoach: boolean
   headCoachRegistrationCodeConfigured: boolean
   serviceRoleConfigured: boolean
 }
 
-export function CoachRegistrationForm({ headCoachRegistrationCodeConfigured, serviceRoleConfigured }: CoachRegistrationFormProps) {
+export function CoachRegistrationForm({
+  canRegisterFirstHeadCoach,
+  headCoachRegistrationCodeConfigured,
+  serviceRoleConfigured,
+}: CoachRegistrationFormProps) {
   const router = useRouter()
   const supabase = createClient()
   const [name, setName] = useState('')
@@ -38,8 +43,12 @@ export function CoachRegistrationForm({ headCoachRegistrationCodeConfigured, ser
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  if (!canRegisterFirstHeadCoach) {
+    return null
+  }
+
   if (!headCoachRegistrationCodeConfigured) {
-    return <p className="rounded-[1rem] bg-slate-100 px-4 py-3 text-sm text-slate-700">目前未開放總教練註冊。請先設定 `HEAD_COACH_REGISTRATION_CODE`。</p>
+    return <p className="rounded-[1rem] bg-slate-100 px-4 py-3 text-sm text-slate-700">尚未設定 `HEAD_COACH_REGISTRATION_CODE`，目前無法建立第一位總教練。</p>
   }
 
   if (!serviceRoleConfigured) {
@@ -52,7 +61,7 @@ export function CoachRegistrationForm({ headCoachRegistrationCodeConfigured, ser
     setIsSubmitting(true)
 
     try {
-      await requestJson<{ email: string }>('/api/auth/coach/register', {
+      await requestJson<{ email: string }>('/api/auth/head-coach/register', {
         method: 'POST',
         body: JSON.stringify({
           name,
@@ -100,12 +109,12 @@ export function CoachRegistrationForm({ headCoachRegistrationCodeConfigured, ser
         <input id="coach-register-confirm-password" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="lab-input" required />
       </div>
       <div className="space-y-2">
-        <label className="text-sm font-semibold text-slate-700" htmlFor="coach-register-code">總教練註冊碼</label>
+        <label className="text-sm font-semibold text-slate-700" htmlFor="coach-register-code">Head Coach Registration Code</label>
         <input id="coach-register-code" type="password" value={registrationCode} onChange={(event) => setRegistrationCode(event.target.value)} className="lab-input" required />
       </div>
       {error ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
       <button type="submit" disabled={isSubmitting} className="lab-btn-primary w-full disabled:opacity-60">
-        {isSubmitting ? '建立中...' : '註冊總教練帳號'}
+        {isSubmitting ? '建立中...' : '建立第一位總教練'}
       </button>
     </form>
   )

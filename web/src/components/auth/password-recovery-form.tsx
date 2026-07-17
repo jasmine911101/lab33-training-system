@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-import { validateNewPassword } from '@/lib/auth/password-rules'
+import { getPasswordUpdateErrorMessage, validateNewPassword } from '@/lib/auth/password-rules'
 import { createClient } from '@/lib/supabase/client'
 
 type RecoveryBootstrapState = 'idle' | 'loading' | 'ready' | 'error'
@@ -126,7 +126,7 @@ export function PasswordRecoveryForm() {
         router.refresh()
       }, 1200)
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : '更新密碼失敗。')
+      setError(getPasswordUpdateErrorMessage(requestError))
     } finally {
       setIsSubmitting(false)
     }

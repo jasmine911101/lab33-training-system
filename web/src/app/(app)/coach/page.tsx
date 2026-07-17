@@ -1,3 +1,4 @@
+import { PasswordUpdateForm } from '@/components/auth/password-update-form'
 import { ProfileStatusCard } from '@/components/auth/profile-status-card'
 import { CoachAthleteManager } from '@/components/coach/coach-athlete-manager'
 import { AppShell } from '@/components/layout/app-shell'
@@ -29,6 +30,32 @@ export default async function CoachHomePage() {
   }
 
   const roleLabel = coachProfile.is_head_coach ? '總教練' : '教練'
+  const requiresPasswordReset = Boolean(coachProfile.must_change_password) && !context.isGoogleSession
+
+  if (requiresPasswordReset) {
+    return (
+      <AppShell
+        title="請設定新密碼"
+        description="你目前使用的是臨時密碼。設定新密碼後才能進入教練端。"
+        role="coach"
+        userEmail={context.user.email}
+        roleLabel={roleLabel}
+        currentPath="/coach"
+      >
+        <section className="mx-auto max-w-2xl">
+          <PasswordUpdateForm
+            coachId={coachProfile.id}
+            forceReset
+            title="請設定新密碼"
+            description="你目前使用的是臨時密碼。更新後會清除強制改密碼狀態，之後才能正常使用教練端。"
+            successMessage="密碼已更新，正在帶你進入教練端。"
+            redirectTo="/coach"
+          />
+        </section>
+      </AppShell>
+    )
+  }
+
   const managementSnapshot = await getCoachManagementSnapshot(coachProfile)
 
   return (

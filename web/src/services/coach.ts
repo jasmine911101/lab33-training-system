@@ -6,6 +6,7 @@ export type CoachProfile = {
   name: string | null
   email: string | null
   is_head_coach: boolean | null
+  must_change_password: boolean | null
 }
 
 export type ManagedAthlete = {
@@ -21,7 +22,7 @@ async function findCoachByUserId(userId: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('coaches')
-    .select('id, user_id, name, email, is_head_coach')
+    .select('id, user_id, name, email, is_head_coach, must_change_password')
     .eq('user_id', userId)
     .limit(1)
     .maybeSingle()
@@ -34,7 +35,7 @@ async function findCoachByEmail(email: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('coaches')
-    .select('id, user_id, name, email, is_head_coach')
+    .select('id, user_id, name, email, is_head_coach, must_change_password')
     .eq('email', email)
     .limit(1)
     .maybeSingle()

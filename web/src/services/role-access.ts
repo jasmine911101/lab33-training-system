@@ -12,6 +12,7 @@ type CoachLookupRow = {
   user_id: string | null
   email: string | null
   is_head_coach?: boolean | null
+  must_change_password?: boolean | null
 }
 
 type AthleteLookupRow = {
@@ -161,7 +162,7 @@ async function findCoachRowsByUserId(userId: string) {
 
   const { data, error } = await admin
     .from('coaches')
-    .select('id, user_id, email, is_head_coach')
+    .select('id, user_id, email, is_head_coach, must_change_password')
     .eq('user_id', userId)
     .order('id', { ascending: true })
 
@@ -175,7 +176,7 @@ async function findCoachRowsByEmail(email: string) {
 
   const { data, error } = await admin
     .from('coaches')
-    .select('id, user_id, email, is_head_coach')
+    .select('id, user_id, email, is_head_coach, must_change_password')
     .ilike('email', email)
     .order('id', { ascending: true })
 

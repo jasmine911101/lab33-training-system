@@ -45,6 +45,10 @@ type CoachDeleteResult = {
   unassignedAthleteCount: number
 }
 
+type CoachRoleUpdateResult = {
+  coach: ManagedCoachRecord
+}
+
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
 }
@@ -53,7 +57,7 @@ async function fetchCoachDirectory() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('coaches')
-    .select('id, user_id, name, email, is_head_coach, created_at')
+    .select('id, user_id, name, email, is_head_coach, must_change_password, created_at')
     .order('name', { ascending: true })
     .order('id', { ascending: true })
 
@@ -207,14 +211,14 @@ export async function getCoachManagementSnapshot(coach: CoachProfile): Promise<C
 
   return {
     athletes: coach.is_head_coach ? prioritizeUnassignedAthletes(hydratedAthletes) : hydratedAthletes,
-    assignableCoaches: coaches.filter((entry) => entry.is_head_coach !== true),
+    assignableCoaches: coaches,
     coaches: coach.is_head_coach ? buildManagedCoachRecords(coaches, allLinks) : [],
   }
 }
 
 export async function getAssignableCoachDirectory() {
   const coaches = await fetchCoachDirectory()
-  return coaches.filter((entry) => entry.is_head_coach !== true)
+  return coaches
 }
 
 async function ensureServiceRoleClient() {
@@ -227,6 +231,37 @@ async function ensureServiceRoleClient() {
   }
 
   return { admin, error: null }
+}
+
+async function countHeadCoaches(admin: NonNullable<ReturnType<typeof createAdminClient>>) {
+  const { count, error } = await admin
+    .from('coaches')
+    .select('id', { count: 'exact', head: true })
+    .eq('is_head_coach', true)
+
+  if (error) return { count: null, error: error.message }
+  return { count: count ?? 0, error: null }
+}
+
+async function hydrateManagedCoach(
+  admin: NonNullable<ReturnType<typeof createAdminClient>>,
+  coach: CoachDirectoryEntry,
+): Promise<AdminMutationResult<ManagedCoachRecord>> {
+  const { count, error } = await admin
+    .from('coach_athletes')
+    .select('id', { count: 'exact', head: true })
+    .eq('coach_id', coach.id)
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  return {
+    data: {
+      ...coach,
+      managedAthleteCount: count ?? 0,
+    },
+  }
 }
 
 async function hydrateSingleAthlete(athleteId: number) {
@@ -320,7 +355,7 @@ export async function createAthleteForCoach(
     if (requestedCoachId != null) {
       const assignableCoaches = await getAssignableCoachDirectory()
       const assignableCoachIds = new Set(assignableCoaches.map((entry) => entry.id))
-      const validCoachId = assignableCoachIds.has(requestedCoachId) ? requestedCoachId : null
+      const validCoachId = requestedCoachId === coach.id || assignableCoachIds.has(requestedCoachId) ? requestedCoachId : null
 
       if (validCoachId != null) {
         const { error: assignmentError } = await admin.from('coach_athletes').insert({
@@ -555,8 +590,9 @@ export async function createCoachForHeadCoach(
       email,
       user_id: authUserId,
       is_head_coach: false,
+      must_change_password: authAccountStatus === 'created',
     })
-    .select('id, user_id, name, email, is_head_coach, created_at')
+    .select('id, user_id, name, email, is_head_coach, must_change_password, created_at')
     .single()
 
   if (insertError) {
@@ -594,7 +630,7 @@ export async function resetTemporaryPasswordForCoach(
 
   const { data: targetCoach, error: targetCoachError } = await admin
     .from('coaches')
-    .select('id, user_id, name, email, is_head_coach, created_at')
+    .select('id, user_id, name, email, is_head_coach, must_change_password, created_at')
     .eq('id', coachId)
     .maybeSingle()
 
@@ -612,6 +648,15 @@ export async function resetTemporaryPasswordForCoach(
     return {
       error: error instanceof Error ? error.message : '重設教練暫時密碼失敗。',
     }
+  }
+
+  const { error: flagError } = await admin
+    .from('coaches')
+    .update({ must_change_password: true })
+    .eq('id', coachId)
+
+  if (flagError) {
+    return { error: '暫時密碼已更新，但標記首次改密碼狀態失敗。請稍後再試或聯絡管理員。' }
   }
 
   const { count, error: countError } = await admin
@@ -657,7 +702,7 @@ export async function updateCoachForHeadCoach(
 
   const { data: currentCoach, error: currentCoachError } = await admin
     .from('coaches')
-    .select('id, user_id, name, email, is_head_coach, created_at')
+    .select('id, user_id, name, email, is_head_coach, must_change_password, created_at')
     .eq('id', coachId)
     .maybeSingle()
 
@@ -683,7 +728,7 @@ export async function updateCoachForHeadCoach(
       email,
     })
     .eq('id', coachId)
-    .select('id, user_id, name, email, is_head_coach, created_at')
+    .select('id, user_id, name, email, is_head_coach, must_change_password, created_at')
     .single()
 
   if (updateError) {
@@ -709,6 +754,72 @@ export async function updateCoachForHeadCoach(
     message: needsRebindNotice
       ? '已更新教練資料。由於這位教練已綁定 Google，之後需要使用新的 Google Email 重新登入。'
       : '已更新教練資料。',
+  }
+}
+
+export async function updateCoachRoleForHeadCoach(
+  actor: CoachProfile,
+  coachId: number,
+  isHeadCoach: boolean,
+): Promise<AdminMutationResult<CoachRoleUpdateResult>> {
+  if (!actor.is_head_coach) {
+    return { error: '只有總教練可以調整教練身分。' }
+  }
+
+  const { admin, error: adminError } = await ensureServiceRoleClient()
+  if (!admin) return { error: adminError ?? '缺少 service role。' }
+
+  const { data: targetCoach, error: targetCoachError } = await admin
+    .from('coaches')
+    .select('id, user_id, name, email, is_head_coach, must_change_password, created_at')
+    .eq('id', coachId)
+    .maybeSingle()
+
+  if (targetCoachError) return { error: targetCoachError.message }
+  if (!targetCoach) return { error: '找不到這位教練。' }
+
+  if (targetCoach.is_head_coach === isHeadCoach) {
+    const hydrated = await hydrateManagedCoach(admin, targetCoach as CoachDirectoryEntry)
+    if (hydrated.error || !hydrated.data) {
+      return { error: hydrated.error ?? '無法重新讀取教練資料。' }
+    }
+
+    return {
+      data: { coach: hydrated.data },
+      message: isHeadCoach ? '這位教練已經是總教練。' : '這位教練已經是一般教練。',
+    }
+  }
+
+  if (targetCoach.is_head_coach && !isHeadCoach) {
+    const headCoachCount = await countHeadCoaches(admin)
+    if (headCoachCount.error) {
+      return { error: headCoachCount.error }
+    }
+
+    if ((headCoachCount.count ?? 0) <= 1) {
+      return { error: '系統至少需要一位總教練。' }
+    }
+  }
+
+  const { data: updatedCoach, error: updateError } = await admin
+    .from('coaches')
+    .update({ is_head_coach: isHeadCoach })
+    .eq('id', coachId)
+    .select('id, user_id, name, email, is_head_coach, must_change_password, created_at')
+    .single()
+
+  if (updateError) {
+    return { error: updateError.message }
+  }
+
+  const hydrated = await hydrateManagedCoach(admin, updatedCoach as CoachDirectoryEntry)
+  if (hydrated.error || !hydrated.data) {
+    return { error: hydrated.error ?? '已更新教練身分，但無法重新讀取教練資料。' }
+  }
+
+  return {
+    data: { coach: hydrated.data },
+    message: isHeadCoach ? '已將教練設為總教練。' : '已將總教練降級為一般教練。',
   }
 }
 
@@ -743,6 +854,17 @@ export async function deleteCoachForHeadCoach(
 
   if (Number(targetCoach.id) === actor.id) {
     return { error: '不能刪除目前登入中的自己。' }
+  }
+
+  if (targetCoach.is_head_coach) {
+    const headCoachCount = await countHeadCoaches(admin)
+    if (headCoachCount.error) {
+      return { error: headCoachCount.error }
+    }
+
+    if ((headCoachCount.count ?? 0) <= 1) {
+      return { error: '請先建立另一位總教練。' }
+    }
   }
 
   const { data: assignmentLinks, error: assignmentLookupError } = await admin

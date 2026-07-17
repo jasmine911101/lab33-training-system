@@ -48,7 +48,8 @@ export default async function StudentHomePage() {
             forceReset
             title="請設定新密碼"
             description="你目前使用的是臨時密碼。更新後會清除強制改密碼狀態，之後才能正常查看自己的課表。"
-            successMessage="密碼已更新。重新整理後即可正常查看課表。"
+            successMessage="密碼已更新，正在帶你進入學員端。"
+            redirectTo="/student"
           />
         </section>
       </AppShell>

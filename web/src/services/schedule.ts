@@ -78,6 +78,7 @@ export type AssignmentDetail = {
   week_num: number | null
   day_num: number | null
   training_category: string
+  cycle_name: string
   cycle_goal: string
   goal: string
   training_element: string
@@ -481,6 +482,7 @@ async function buildAssignmentDetail(
     week_num: row.week_num,
     day_num: row.day_num,
     training_category: text(row.training_category),
+    cycle_name: text(row.cycle_goal),
     cycle_goal: text(row.cycle_goal),
     goal: text(block?.goal),
     training_element: text(block?.training_element),

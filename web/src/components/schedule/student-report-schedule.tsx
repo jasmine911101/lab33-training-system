@@ -5,10 +5,22 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { GENERAL_EVENT_TYPES } from '@/lib/types/schedule-management'
 import { normalizeExternalUrl } from '@/lib/external-url'
+import { AssignmentCalendarPreview, CycleBadge, cycleNameFromAssignment, weekNumberLabel } from '@/components/schedule/cycle-info'
 import type { AthleteScheduleBundle, AssignmentDetail, ExerciseRow, GeneralEventDetail, StudentDashboardSummary } from '@/services/schedule'
 
 type ScheduleItem =
-  | { kind: 'assignment'; id: string; recordId: number; startDate: string; endDate: string; previewTop: string; previewBottom: string }
+  | {
+      kind: 'assignment'
+      id: string
+      recordId: number
+      startDate: string
+      endDate: string
+      weekLabel: string
+      cycleName: string
+      eventName: string
+      categoryLabel: string
+      blockCode: string
+    }
   | { kind: 'event'; id: string; recordId: number; startDate: string; endDate: string; previewTop: string; previewBottom?: string }
 
 type CalendarCell = {
@@ -68,11 +80,6 @@ function truncateText(value: string, maxLength: number) {
   return `${value.slice(0, Math.max(0, maxLength - 1))}…`
 }
 
-function compactWeekLabel(weekLabel: string) {
-  const matched = weekLabel.match(/(\d+)/)
-  return matched ? `W${matched[1]}` : 'W-'
-}
-
 function blockNameFromLabel(label: string) {
   if (!label.includes('|')) return label || '未命名板塊'
   const [, ...rest] = label.split('|')
@@ -119,8 +126,11 @@ function buildScheduleItems(scheduleState: AthleteScheduleBundle): ScheduleItem[
     recordId: assignment.record_id,
     startDate: assignment.start_date || assignment.date_range.split(' ~ ')[0] || todayIso(),
     endDate: assignment.end_date || assignment.start_date || assignment.date_range.split(' ~ ').slice(-1)[0] || todayIso(),
-    previewTop: `${compactWeekLabel(assignment.week_label)}・${truncateText(assignment.event_display_name || assignment.block_name || '未命名安排', 8)}`,
-    previewBottom: `${truncateText(assignment.category_label || '未分類', 6)}・${truncateText(assignment.block_code || '無代號', 10)}`,
+    weekLabel: assignment.week_label,
+    cycleName: assignment.cycle_name,
+    eventName: truncateText(assignment.event_display_name || assignment.block_name || '未命名安排', 8),
+    categoryLabel: truncateText(assignment.category_label || '未分類', 6),
+    blockCode: truncateText(assignment.block_code || '無代號', 10),
   }))
 
   const events = scheduleState.generalEvents.map((event) => ({
@@ -398,7 +408,7 @@ function StudentPreviewAssignmentCard({
 
             <div className="flex-1 overflow-y-auto px-6 py-6 sm:px-7">
               <div className="flex flex-wrap gap-2">
-                <span className="lab-badge bg-slate-100 text-slate-700">{assignment.week_label}</span>
+                <CycleBadge weekLabel={assignment.week_label} cycleName={assignment.cycle_name} />
                 <span className="lab-badge bg-slate-100 text-slate-700">事件：{assignment.event_display_name || '-'}</span>
                 <span className="lab-badge bg-sky-100 text-sky-700">{assignment.category_label}</span>
                 <span className="lab-badge bg-amber-100 text-amber-800">{assignment.block_code || '未設定代號'}</span>
@@ -587,7 +597,7 @@ function StudentAssignmentCard({
           <p className="lab-eyebrow">Training Assignment</p>
           <h3 className="mt-3 text-2xl font-bold text-slate-900">{resolvedBlockName}</h3>
           <div className="mt-3 flex flex-wrap gap-2">
-            <span className="lab-badge bg-slate-100 text-slate-700">{assignment.week_label}</span>
+            <CycleBadge weekLabel={assignment.week_label} cycleName={assignment.cycle_name} />
             <span className="lab-badge bg-slate-100 text-slate-700">事件：{assignment.event_display_name || '-'}</span>
             <span className="lab-badge bg-sky-100 text-sky-700">{assignment.category_label}</span>
             <span className="lab-badge bg-amber-100 text-amber-800">{assignment.block_code || '未設定代號'}</span>
@@ -705,7 +715,7 @@ function DailyAssignmentSummaryCard({
         <span className="lab-badge-primary">課表安排</span>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        <span className="lab-badge bg-slate-100 text-slate-700">Week：{assignment.week_label.replace(/^Week\s*/i, '') || '-'}</span>
+        <CycleBadge weekLabel={assignment.week_label} cycleName={assignment.cycle_name} />
         <span className="lab-badge bg-sky-100 text-sky-700">分類：{assignment.category_label}</span>
         <span className="lab-badge bg-amber-100 text-amber-800">代號：{assignment.block_code || '無代號'}</span>
       </div>
@@ -807,8 +817,20 @@ function CalendarMonthGrid({
                         key={`${cell.date}-${item.kind}-${item.id}`}
                         className={`rounded-xl px-2.5 py-1.5 text-[11px] font-medium leading-4 ${item.kind === 'assignment' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'} ${cell.inCurrentMonth ? '' : 'opacity-70'}`}
                       >
-                        <div className="truncate">{item.previewTop}</div>
-                        {item.previewBottom ? <div className="mt-0.5 truncate">{item.previewBottom}</div> : null}
+                        {item.kind === 'assignment' ? (
+                          <AssignmentCalendarPreview
+                            weekLabel={item.weekLabel}
+                            cycleName={item.cycleName}
+                            eventName={item.eventName}
+                            categoryLabel={item.categoryLabel}
+                            blockCode={item.blockCode}
+                          />
+                        ) : (
+                          <>
+                            <div className="truncate">{item.previewTop}</div>
+                            {item.previewBottom ? <div className="mt-0.5 truncate">{item.previewBottom}</div> : null}
+                          </>
+                        )}
                       </div>
                     ))}
                     {cell.items.length > 2 ? (
@@ -834,6 +856,9 @@ export function StudentCalendarPreview({ summary, href }: StudentCalendarPreview
   const monthlyEventCount = summary.monthlyEventCount
   const nextAssignment = summary.nextAssignment
   const nextEvent = summary.nextEvent
+  const currentCycleName = nextAssignment ? cycleNameFromAssignment(nextAssignment.cycle_name, nextAssignment.cycle_goal) : ''
+  const currentWeekNumber = nextAssignment ? weekNumberLabel(nextAssignment.week_label) : '-'
+  const currentTrainingDay = nextAssignment?.day_num ? `Day ${nextAssignment.day_num}` : '尚未設定'
 
   return (
     <article className="lab-card p-6 sm:p-7">
@@ -860,6 +885,23 @@ export function StudentCalendarPreview({ summary, href }: StudentCalendarPreview
             <p className="lab-eyebrow">Events</p>
             <p className="mt-3 text-3xl font-bold text-slate-900">{monthlyEventCount}</p>
             <p className="mt-2 text-sm text-slate-500">本月一般事件</p>
+          </article>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <article className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4">
+            <p className="lab-eyebrow">Current Cycle Name</p>
+            <p className="mt-3 truncate text-base font-bold text-slate-900" title={currentCycleName || undefined}>
+              {currentCycleName || '尚未設定'}
+            </p>
+          </article>
+          <article className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4">
+            <p className="lab-eyebrow">Week Number</p>
+            <p className="mt-3 text-base font-bold text-slate-900">Week {currentWeekNumber}</p>
+          </article>
+          <article className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4">
+            <p className="lab-eyebrow">Current Training Day</p>
+            <p className="mt-3 text-base font-bold text-slate-900">{currentTrainingDay}</p>
           </article>
         </div>
 
