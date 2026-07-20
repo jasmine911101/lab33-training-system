@@ -1,0 +1,23 @@
+import { NextResponse } from 'next/server'
+
+import { requireCoachApiContext } from '@/lib/auth/api'
+import { archiveBlockTaxonomyNode } from '@/services/block-taxonomy'
+
+export async function POST(
+  _request: Request,
+  { params }: { params: Promise<{ nodeType: string; nodeId: string }> },
+) {
+  const { context, response } = await requireCoachApiContext()
+  if (response || !context?.coachProfile) return response as NextResponse
+
+  const { nodeType, nodeId } = await params
+  const parsedNodeId = Number(nodeId)
+  if (!Number.isFinite(parsedNodeId)) return NextResponse.json({ error: '分類 ID 不正確。' }, { status: 400 })
+
+  const result = await archiveBlockTaxonomyNode(context.coachProfile, nodeType, parsedNodeId)
+  if (result.error || !result.data) {
+    return NextResponse.json({ error: result.error ?? '封存分類失敗。', preview: result.data ?? null }, { status: 400 })
+  }
+
+  return NextResponse.json({ preview: result.data, message: result.message })
+}

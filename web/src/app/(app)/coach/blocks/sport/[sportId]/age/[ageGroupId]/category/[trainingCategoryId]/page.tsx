@@ -55,8 +55,8 @@ export default async function TrainingCategoryBlocksPage({
         <BlockTaxonomyErrorState title={failure.title} description={failure.description} />
       ) : sport && ageGroup && trainingCategory && snapshot ? (
         <div className="space-y-6">
-          <article className="lab-card overflow-hidden p-6 sm:p-7">
-            <div className="flex flex-col gap-5 sm:gap-6">
+          <article className="lab-card overflow-hidden p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:gap-4">
               <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
                 <Link href="/coach/blocks" className="hover:text-slate-900">板塊管理</Link>
                 <span>/</span>
@@ -67,10 +67,14 @@ export default async function TrainingCategoryBlocksPage({
                 <span className="font-semibold text-slate-900">{trainingCategory.name}</span>
               </nav>
 
+              <Link href={`/coach/blocks/sport/${sport.id}/age/${ageGroup.id}`} className="inline-flex text-sm font-semibold text-slate-600 hover:text-orange-600">
+                ← 返回 {ageGroup.name}
+              </Link>
+
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-3xl">
-                  <h1 className="lab-section-title">{trainingCategory.name} 板塊</h1>
-                  <p className="lab-copy mt-3">
+                  <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">{trainingCategory.name} 板塊</h1>
+                  <p className="lab-copy mt-2">
                     目前顯示 {sport.name} / {ageGroup.name} / {trainingCategory.name} 底下的板塊。Excel 匯入與手動建立都會自動套用目前分類。
                   </p>
                 </div>

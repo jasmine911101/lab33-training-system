@@ -40,6 +40,8 @@ export default async function CoachBlocksPage() {
               name: sport.name,
               href: `/coach/blocks/sport/${sport.id}`,
               meta: `${sport.ageGroupCount} 個年齡分級`,
+              nodeType: 'sports' as const,
+              canManage: true,
             })),
             {
               id: 'uncategorized',

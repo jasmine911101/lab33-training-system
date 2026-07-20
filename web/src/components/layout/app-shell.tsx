@@ -26,12 +26,16 @@ function getNavItems(role: Exclude<AppRole, 'unknown'>): NavItem[] {
     return [
       { href: '/coach', label: '學員管理', shortLabel: '學員', icon: 'A' },
       { href: '/coach/blocks', label: '板塊管理', shortLabel: '板塊', icon: 'B' },
+      { href: '/coach/products', label: '商品管理', shortLabel: '商品', icon: 'P' },
+      { href: '/coach/teams', label: '球隊管理', shortLabel: '球隊', icon: 'T' },
+      { href: '/coach/team-programs', label: '團隊課表', shortLabel: '團課', icon: 'G' },
       { href: '/', label: '網站首頁', shortLabel: '首頁', icon: 'L' },
     ]
   }
 
   return [
     { href: '/student', label: '我的課表', shortLabel: '課表', icon: 'T' },
+    { href: '/student/team-programs', label: '我的團隊課表', shortLabel: '團課', icon: 'G' },
     { href: '/', label: '網站首頁', shortLabel: '首頁', icon: 'L' },
   ]
 }
@@ -79,12 +83,12 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
               <div className="lab-brand-mark">33</div>
               <div>
                 <p className="lab-eyebrow">LAB33 Training System</p>
-                <h1 className="mt-2 text-3xl font-bold leading-none">{role === 'coach' ? 'Coach Hub' : 'Athlete Hub'}</h1>
-                <p className="mt-3 text-sm leading-7 text-slate-600">
-                  {role === 'coach'
-                    ? '管理學員、查看已安排課表與一般事件，逐步從 Streamlit 遷移完整訓練管理流程。'
-                    : '聚焦自己的課表、一般事件與訓練內容，後續再搬移回報與互動流程。'}
-                </p>
+                <h1 className="mt-2 text-3xl font-bold leading-none">{role === 'coach' ? 'Coach' : 'Athlete Hub'}</h1>
+                {role === 'coach' ? null : (
+                  <p className="mt-3 text-sm leading-7 text-slate-600">
+                    聚焦自己的課表、一般事件與訓練內容，後續再搬移回報與互動流程。
+                  </p>
+                )}
               </div>
             </div>
           </div>

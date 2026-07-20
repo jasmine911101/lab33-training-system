@@ -563,6 +563,15 @@ export async function deleteBlockTemplateForCoach(
     return { error: '找不到要刪除的板塊。' }
   }
 
+  const { data: productBlocks, error: productBlocksError } = await admin
+    .from('training_product_blocks')
+    .select('id')
+    .eq('block_id', blockId)
+
+  if (productBlocksError && productBlocksError.code !== 'PGRST205') {
+    return { error: productBlocksError.message }
+  }
+
   const { data: athleteBlocks, error: athleteBlocksError } = await admin
     .from('athlete_blocks')
     .select('id')
@@ -572,22 +581,23 @@ export async function deleteBlockTemplateForCoach(
     return { error: athleteBlocksError.message }
   }
 
-  const athleteBlockIds = (athleteBlocks ?? []).map((row) => Number(row.id)).filter((value) => Number.isFinite(value))
+  const { data: programBlocks, error: programBlocksError } = await admin
+    .from('athlete_program_blocks')
+    .select('id')
+    .eq('block_id', blockId)
 
-  if (athleteBlockIds.length > 0) {
-    const { error: deleteSnapshotError } = await admin
-      .from('athlete_block_exercises')
-      .delete()
-      .in('athlete_block_id', athleteBlockIds)
-
-    if (deleteSnapshotError) {
-      return { error: deleteSnapshotError.message }
-    }
+  if (programBlocksError && programBlocksError.code !== 'PGRST205') {
+    return { error: programBlocksError.message }
   }
 
-  const { error: deleteAthleteBlocksError } = await admin.from('athlete_blocks').delete().eq('block_id', blockId)
-  if (deleteAthleteBlocksError) {
-    return { error: deleteAthleteBlocksError.message }
+  const productUsageCount = productBlocks?.length ?? 0
+  const scheduleUsageCount = athleteBlocks?.length ?? 0
+  const programUsageCount = programBlocks?.length ?? 0
+
+  if (productUsageCount + scheduleUsageCount + programUsageCount > 0) {
+    return {
+      error: `此板塊已被引用，無法直接刪除。商品 ${productUsageCount} 筆、課表 ${scheduleUsageCount} 筆、方案 ${programUsageCount} 筆。請保留此板塊或改用封存分類。`,
+    }
   }
 
   const { error: deleteExercisesError } = await admin.from('block_exercises').delete().eq('block_id', blockId)
@@ -607,6 +617,6 @@ export async function deleteBlockTemplateForCoach(
 
   return {
     data: { blockId },
-    message: '已刪除板塊，並移除相關的學員課表與詳細內容。',
+    message: '已刪除未被引用的板塊模板。',
   }
 }

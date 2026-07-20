@@ -45,6 +45,8 @@ export default async function AgeGroupBlocksPage({ params }: { params: Promise<{
           eyebrow="Training Category"
           title={`${sport.name} / ${ageGroup.name}`}
           description="點進某個訓練分類後，就會看到該分類底下的板塊清單。"
+          backHref={`/coach/blocks/sport/${sport.id}`}
+          backLabel={`返回 ${sport.name}`}
           breadcrumbs={[
             { label: '板塊管理', href: '/coach/blocks' },
             { label: sport.name, href: `/coach/blocks/sport/${sport.id}` },
@@ -55,6 +57,8 @@ export default async function AgeGroupBlocksPage({ params }: { params: Promise<{
             name: trainingCategory.name,
             href: `/coach/blocks/sport/${sport.id}/age/${ageGroup.id}/category/${trainingCategory.id}`,
             meta: `${trainingCategory.blockCount} 個板塊`,
+            nodeType: 'training-categories' as const,
+            canManage: true,
           }))}
           emptyMessage="這個年齡分級底下還沒有訓練分類。"
           createForm={<BlockTaxonomyCreateForm actionLabel="新增訓練分類" endpoint={`/api/coach/block-taxonomy/age-groups/${ageGroup.id}/training-categories`} placeholder="例如：功能性訓練、爆發力、恢復" />}

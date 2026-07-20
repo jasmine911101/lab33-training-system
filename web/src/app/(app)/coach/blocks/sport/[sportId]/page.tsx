@@ -42,6 +42,8 @@ export default async function SportBlocksPage({ params }: { params: Promise<{ sp
           eyebrow="Sport"
           title={sport.name}
           description="點進某個年齡分級後，就能看到對應的訓練分類資料夾。"
+          backHref="/coach/blocks"
+          backLabel="返回板塊管理首頁"
           breadcrumbs={[
             { label: '板塊管理', href: '/coach/blocks' },
             { label: sport.name },
@@ -51,6 +53,8 @@ export default async function SportBlocksPage({ params }: { params: Promise<{ sp
             name: ageGroup.name,
             href: `/coach/blocks/sport/${sport.id}/age/${ageGroup.id}`,
             meta: `${ageGroup.trainingCategoryCount} 個訓練分類`,
+            nodeType: 'age-groups' as const,
+            canManage: true,
           }))}
           emptyMessage="這個專項底下還沒有年齡分級。"
           createForm={<BlockTaxonomyCreateForm actionLabel="新增年齡分級" endpoint={`/api/coach/block-taxonomy/sports/${sport.id}/age-groups`} placeholder="例如：成人、大學生、高中" />}
