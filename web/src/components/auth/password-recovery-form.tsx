@@ -82,10 +82,10 @@ export function PasswordRecoveryForm() {
 
         setBootstrapState('ready')
         window.history.replaceState({}, '', window.location.pathname)
-      } catch (requestError) {
+      } catch {
         if (isCancelled) return
         setBootstrapState('error')
-        setError(requestError instanceof Error ? requestError.message : '無法驗證 recovery session。')
+        setError('無法驗證重設密碼連結；連結可能已失效，請重新申請。')
       }
     }
 

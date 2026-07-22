@@ -6,7 +6,9 @@ import { env } from '@/lib/env'
 import { resolveOAuthCallbackUser } from '@/services/oauth-callback'
 
 export async function GET(request: NextRequest) {
-  const next = request.nextUrl.searchParams.get('next') || '/coach/login'
+  const requestedNext = request.nextUrl.searchParams.get('next')
+  const allowedNextPaths = new Set(['/', '/coach', '/student', '/coach/login', '/student/login'])
+  const next = requestedNext && allowedNextPaths.has(requestedNext) ? requestedNext : '/coach/login'
   const intent = request.nextUrl.searchParams.get('intent')
   const code = request.nextUrl.searchParams.get('code')
 

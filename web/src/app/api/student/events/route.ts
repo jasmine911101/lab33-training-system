@@ -36,6 +36,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '請輸入事件名稱。' }, { status: 400 })
   }
 
+  if (title.length > 120 || notes.length > 2000) {
+    return NextResponse.json({ error: '事件名稱或備註內容過長。' }, { status: 400 })
+  }
+
   if (!startDate) {
     return NextResponse.json({ error: '請選擇開始日期。' }, { status: 400 })
   }
@@ -51,7 +55,12 @@ export async function POST(request: Request) {
   })
 
   if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 400 })
+    console.error('Failed to create athlete event', {
+      athleteId: studentProfile.id,
+      code: insertError.code,
+      message: insertError.message,
+    })
+    return NextResponse.json({ error: '新增事件失敗，請稍後再試。' }, { status: 500 })
   }
 
   const schedule = await getAthleteScheduleBundle(studentProfile.id)
