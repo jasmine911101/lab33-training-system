@@ -2,13 +2,11 @@ import Link from 'next/link'
 
 import { getAuthenticatedUser } from '@/lib/auth/session'
 import { getAppContextForUser } from '@/lib/auth/roles'
-import { getFirstHeadCoachRegistrationAvailability } from '@/services/coach-auth'
 
 export default async function HomePage() {
   const user = await getAuthenticatedUser()
   const context = user ? await getAppContextForUser(user) : null
   const signedInHref = context?.hasCoachAccess ? '/coach' : context?.hasStudentAccess ? '/student' : '/'
-  const headCoachAvailability = user ? null : await getFirstHeadCoachRegistrationAvailability()
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f6efe5_0%,#fbfaf7_55%,#ffffff_100%)] px-4 py-10 text-stone-900 sm:px-6 lg:px-8">
@@ -21,7 +19,7 @@ export default async function HomePage() {
                 LAB33 Training System Web
               </h1>
               <p className="max-w-2xl text-base leading-8 text-stone-600 sm:text-lg">
-                新網站目前已完成角色保護、登入後自動分流、基本 dashboard、導覽列與登出，並已搬移學員管理、學員回報、行事曆安排與板塊管理。舊版 Streamlit 仍保留並行，Excel 匯入會在後續階段完成。
+                新網站目前已完成角色保護、登入後自動分流、教練與學員 dashboard、課表安排、成果回報、板塊管理與 Excel 匯入。舊版 Streamlit 已停用。
               </p>
               <div className="flex flex-wrap gap-3">
                 {user ? (
@@ -36,11 +34,6 @@ export default async function HomePage() {
                     <Link href="/student/login" className="rounded-full border border-stone-300 px-5 py-3 font-semibold text-stone-800 transition hover:border-stone-900">
                       學員端登入
                     </Link>
-                    {headCoachAvailability?.canRegisterFirstHeadCoach ? (
-                      <Link href="/coach/login" className="rounded-full border border-orange-200 bg-orange-50 px-5 py-3 font-semibold text-orange-700 transition hover:border-orange-500 hover:bg-orange-100">
-                        初始化系統（建立第一位總教練）
-                      </Link>
-                    ) : null}
                   </>
                 )}
               </div>
@@ -66,7 +59,7 @@ export default async function HomePage() {
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt>舊版系統</dt>
-                  <dd>保留並行</dd>
+                  <dd>已停用</dd>
                 </div>
               </dl>
             </div>
