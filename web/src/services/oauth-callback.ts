@@ -14,12 +14,10 @@ type OAuthCallbackResolution =
   | {
       status: 'coach'
       redirectPath: '/coach'
-      matchedEmail: string
     }
   | {
       status: 'student'
       redirectPath: '/student'
-      matchedEmail: string
     }
   | {
       status: 'error'
@@ -40,14 +38,11 @@ export async function resolveOAuthCallbackUser(
   intent?: string | null,
 ): Promise<OAuthCallbackResolution> {
   const loginPath = getLoginPath(intent)
-  const rawGoogleEmail = user?.email ?? null
   const loginIntent = intent === 'student' ? 'student' : 'coach'
 
   if (!user) {
     logOAuthResolution('callback failed: no user from Supabase session', {
       loginIntent,
-      googleEmail: rawGoogleEmail,
-      normalizedEmail: null,
       finalReason: 'callback-failed',
     })
     return {
@@ -62,8 +57,6 @@ export async function resolveOAuthCallbackUser(
 
     logOAuthResolution(result.ok ? 'callback resolved as student' : 'callback failed during student access check', {
       loginIntent,
-      googleEmail: rawGoogleEmail,
-      normalizedEmail: result.ok ? result.matchedEmail : result.normalizedEmail,
       athleteQueryResults: summarizeStudentAccessRows(result.athleteRows),
       finalReason: result.ok ? `student:${result.source}` : result.code,
       redirectPath: result.ok ? '/student' : loginPath,
@@ -80,7 +73,6 @@ export async function resolveOAuthCallbackUser(
     return {
       status: 'student',
       redirectPath: '/student',
-      matchedEmail: result.matchedEmail,
     }
   }
 
@@ -88,8 +80,6 @@ export async function resolveOAuthCallbackUser(
 
   logOAuthResolution(result.ok ? 'callback resolved as coach' : 'callback failed during coach access check', {
     loginIntent,
-    googleEmail: rawGoogleEmail,
-    normalizedEmail: result.ok ? result.matchedEmail : result.normalizedEmail,
     coachQueryResults: summarizeCoachAccessRows(result.coachRows),
     finalReason: result.ok ? `coach:${result.source}` : result.code,
     redirectPath: result.ok ? '/coach' : loginPath,
@@ -106,6 +96,5 @@ export async function resolveOAuthCallbackUser(
   return {
     status: 'coach',
     redirectPath: '/coach',
-    matchedEmail: result.matchedEmail,
   }
 }

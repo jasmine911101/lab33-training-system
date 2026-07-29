@@ -1,14 +1,19 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+import { resolveSafeCallbackNext } from '@/lib/auth/callback-redirect'
 import { getOAuthErrorMessage } from '@/lib/auth/oauth-errors'
+import {
+  RECOVERY_INTENT_COOKIE,
+  createRecoveryIntent,
+  recoveryIntentCookieOptions,
+} from '@/lib/auth/recovery-intent'
 import { env } from '@/lib/env'
 import { resolveOAuthCallbackUser } from '@/services/oauth-callback'
 
 export async function GET(request: NextRequest) {
   const requestedNext = request.nextUrl.searchParams.get('next')
-  const allowedNextPaths = new Set(['/', '/coach', '/student', '/coach/login', '/student/login'])
-  const next = requestedNext && allowedNextPaths.has(requestedNext) ? requestedNext : '/coach/login'
+  const next = resolveSafeCallbackNext(requestedNext)
   const intent = request.nextUrl.searchParams.get('intent')
   const code = request.nextUrl.searchParams.get('code')
 
@@ -46,6 +51,17 @@ export async function GET(request: NextRequest) {
   }
 
   if (intent === 'recovery') {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    const recoveryIntent = user ? createRecoveryIntent(user.id) : null
+    if (!recoveryIntent) {
+      const failureUrl = new URL('/coach/login', request.url)
+      failureUrl.searchParams.set('oauth_error', 'callback-failed')
+      return NextResponse.redirect(failureUrl)
+    }
+
+    response.cookies.set(RECOVERY_INTENT_COOKIE, recoveryIntent, recoveryIntentCookieOptions)
     response.headers.set('Location', new URL('/reset-password', request.url).toString())
     return response
   }

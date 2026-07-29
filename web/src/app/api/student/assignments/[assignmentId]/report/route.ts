@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { requireStudentAccess } from '@/lib/auth/roles'
+import { requireStudentApiContext } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 
 function text(value: unknown) {
@@ -20,12 +20,9 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ assignmentId: string }> },
 ) {
-  const context = await requireStudentAccess('/student/login')
+  const { context, response } = await requireStudentApiContext()
+  if (response || !context?.studentProfile) return response as NextResponse
   const studentProfile = context.studentProfile
-
-  if (!studentProfile) {
-    return NextResponse.json({ error: '找不到目前登入學員。' }, { status: 403 })
-  }
 
   const { assignmentId } = await params
   const parsedAssignmentId = Number(assignmentId)

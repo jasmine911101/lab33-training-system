@@ -1,8 +1,17 @@
 import { Suspense } from 'react'
+import { cookies } from 'next/headers'
 
 import { PasswordRecoveryForm } from '@/components/auth/password-recovery-form'
+import { RECOVERY_INTENT_COOKIE, hasValidRecoveryIntent } from '@/lib/auth/recovery-intent'
+import { createClient } from '@/lib/supabase/server'
 
-export default function ResetPasswordPage() {
+export default async function ResetPasswordPage() {
+  const [cookieStore, supabase] = await Promise.all([cookies(), createClient()])
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const recoveryReady = hasValidRecoveryIntent(cookieStore.get(RECOVERY_INTENT_COOKIE)?.value, user?.id)
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#efe7db_0%,#fbfaf7_100%)] px-4 py-10 text-stone-900 sm:px-6 lg:px-8">
       <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
@@ -15,7 +24,7 @@ export default function ResetPasswordPage() {
         </section>
         <section className="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-sm">
           <Suspense fallback={<div className="lab-card p-6 text-sm text-slate-600">載入中...</div>}>
-            <PasswordRecoveryForm />
+            <PasswordRecoveryForm recoveryReady={recoveryReady} />
           </Suspense>
         </section>
       </div>

@@ -3,8 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-import { getPasswordUpdateErrorMessage, validateNewPassword } from '@/lib/auth/password-rules'
-import { createClient } from '@/lib/supabase/client'
+import { validateNewPassword } from '@/lib/auth/password-rules'
 
 type PasswordUpdateFormProps = {
   athleteId?: number
@@ -21,9 +20,6 @@ type PasswordUpdateFormProps = {
 }
 
 export function PasswordUpdateForm({
-  athleteId,
-  coachId,
-  forceReset = false,
   onSuccess,
   successMessage,
   title = '修改密碼',
@@ -34,7 +30,6 @@ export function PasswordUpdateForm({
   surface = 'card',
 }: PasswordUpdateFormProps) {
   const router = useRouter()
-  const supabase = createClient()
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -55,52 +50,16 @@ export function PasswordUpdateForm({
 
     setIsSubmitting(true)
 
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession()
-
-    if (sessionError || !session) {
-      setError('登入狀態已失效，請重新登入。')
-      setIsSubmitting(false)
-      return
-    }
-
     try {
-      const { error: updateUserError } = await supabase.auth.updateUser({
-        password: newPassword,
+      const response = await fetch('/api/auth/password/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: newPassword }),
       })
-
-      if (updateUserError) {
-        setError(getPasswordUpdateErrorMessage(updateUserError))
-        setIsSubmitting(false)
+      const payload = await response.json().catch(() => null) as { error?: string } | null
+      if (!response.ok) {
+        setError(payload?.error ?? '更新密碼失敗，請稍後再試。')
         return
-      }
-
-      if (forceReset && athleteId) {
-        const { error: athleteUpdateError } = await supabase
-          .from('athletes')
-          .update({ must_change_password: false })
-          .eq('id', athleteId)
-
-        if (athleteUpdateError) {
-          setError('密碼已更新，但清除臨時密碼狀態失敗。請重新整理或聯絡教練。')
-          setIsSubmitting(false)
-          return
-        }
-      }
-
-      if (forceReset && coachId) {
-        const { error: coachUpdateError } = await supabase
-          .from('coaches')
-          .update({ must_change_password: false })
-          .eq('id', coachId)
-
-        if (coachUpdateError) {
-          setError('密碼已更新，但清除臨時密碼狀態失敗。請重新整理或聯絡總教練。')
-          setIsSubmitting(false)
-          return
-        }
       }
 
       setSuccess(successMessage)
@@ -114,8 +73,8 @@ export function PasswordUpdateForm({
           router.refresh()
         }, 800)
       }
-    } catch (requestError) {
-      setError(getPasswordUpdateErrorMessage(requestError))
+    } catch {
+      setError('更新密碼失敗，請稍後再試。')
     } finally {
       setIsSubmitting(false)
     }

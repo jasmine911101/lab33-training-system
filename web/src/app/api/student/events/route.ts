@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { requireStudentAccess } from '@/lib/auth/roles'
+import { requireStudentApiContext } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { GENERAL_EVENT_TYPES } from '@/lib/types/schedule-management'
 import { getAthleteScheduleBundle } from '@/services/schedule'
@@ -18,12 +18,9 @@ function normalizeEventType(value: string) {
 }
 
 export async function POST(request: Request) {
-  const context = await requireStudentAccess('/student/login')
+  const { context, response } = await requireStudentApiContext()
+  if (response || !context?.studentProfile) return response as NextResponse
   const studentProfile = context.studentProfile
-
-  if (!studentProfile) {
-    return NextResponse.json({ error: '找不到目前登入學員。' }, { status: 403 })
-  }
 
   const body = await request.json().catch(() => null)
   const title = text(body?.title)

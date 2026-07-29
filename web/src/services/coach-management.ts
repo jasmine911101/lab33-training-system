@@ -15,6 +15,7 @@ import {
   listAuthUsersByEmail,
   updateManagedAuthPassword,
 } from '@/services/managed-auth'
+import { recordPasswordResetAudit } from '@/services/password-reset-audit'
 import type { CoachProfile } from '@/services/coach'
 
 type CoachAthleteLink = {
@@ -233,6 +234,25 @@ async function ensureServiceRoleClient() {
   return { admin, error: null }
 }
 
+async function revokeTargetSessions(
+  admin: NonNullable<ReturnType<typeof createAdminClient>>,
+  targetUserId: string,
+) {
+  const { error } = await admin.rpc('revoke_auth_sessions', { target_user_id: targetUserId })
+  if (error) throw error
+}
+
+async function recordResetAuditSafely(
+  admin: NonNullable<ReturnType<typeof createAdminClient>>,
+  input: Parameters<typeof recordPasswordResetAudit>[1],
+) {
+  try {
+    await recordPasswordResetAudit(admin, input)
+  } catch {
+    // Password values are deliberately unavailable to audit/logging paths.
+  }
+}
+
 async function countHeadCoaches(admin: NonNullable<ReturnType<typeof createAdminClient>>) {
   const { count, error } = await admin
     .from('coaches')
@@ -392,6 +412,8 @@ export async function createAthleteForCoach(
 
 export async function resetTemporaryPasswordForAthlete(
   athlete: ManagedAthleteRecord,
+  actorUserId: string,
+  reason: string,
 ): Promise<AdminMutationResult<ManagedAthleteRecord>> {
   const { admin, error: adminError } = await ensureServiceRoleClient()
   if (!admin) return { error: adminError ?? '缺少 service role。' }
@@ -400,7 +422,7 @@ export async function resetTemporaryPasswordForAthlete(
 
   try {
     let authUserId = athlete.user_id
-    let message = '已重設臨時密碼。'
+    const message = '已重設臨時密碼。'
 
     if (authUserId) {
       try {
@@ -415,16 +437,22 @@ export async function resetTemporaryPasswordForAthlete(
     }
 
     if (!authUserId) {
-      const existingAuthUser = athlete.email ? await listAuthUsersByEmail(admin, athlete.email) : null
-      if (existingAuthUser) {
-        await updateManagedAuthPassword(admin, existingAuthUser.id, tempPassword)
-        authUserId = existingAuthUser.id
-        message = '已連結既有 Auth 帳號，並重設臨時密碼。'
-      } else {
-        return {
-          error: '這位學員目前沒有可重設的 password 帳號。Google 登入學員不會自動建立臨時密碼帳號。',
-        }
+      return {
+        error: '這位學員尚未綁定登入帳號，無法重設暫時密碼。請先完成人工 identity binding。',
       }
+    }
+
+    try {
+      await recordPasswordResetAudit(admin, {
+        action: 'temporary_password_reset_attempt',
+        actorUserId,
+        targetUserId: authUserId,
+        targetType: 'athlete',
+        reason,
+        success: false,
+      })
+    } catch {
+      return { error: '無法建立安全稽核紀錄，因此未執行密碼重設。' }
     }
 
     const { error: athleteUpdateError } = await admin
@@ -433,7 +461,30 @@ export async function resetTemporaryPasswordForAthlete(
       .eq('id', athlete.id)
 
     if (athleteUpdateError) {
+      await recordResetAuditSafely(admin, {
+        action: 'temporary_password_reset',
+        actorUserId,
+        targetUserId: authUserId,
+        targetType: 'athlete',
+        reason,
+        success: false,
+      })
       return { error: athleteUpdateError.message }
+    }
+
+    await revokeTargetSessions(admin, authUserId)
+
+    try {
+      await recordPasswordResetAudit(admin, {
+        action: 'temporary_password_reset',
+        actorUserId,
+        targetUserId: authUserId,
+        targetType: 'athlete',
+        reason,
+        success: true,
+      })
+    } catch {
+      return { error: '密碼與登入狀態已更新，但無法完成成功稽核紀錄。請立即聯絡管理員。' }
     }
 
     const hydratedAthlete = await hydrateSingleAthlete(athlete.id)
@@ -447,6 +498,16 @@ export async function resetTemporaryPasswordForAthlete(
       tempPassword,
     }
   } catch (error) {
+    if (athlete.user_id) {
+      await recordResetAuditSafely(admin, {
+        action: 'temporary_password_reset',
+        actorUserId,
+        targetUserId: athlete.user_id,
+        targetType: 'athlete',
+        reason,
+        success: false,
+      })
+    }
     return {
       error: error instanceof Error ? error.message : '重設失敗。',
     }
@@ -615,7 +676,9 @@ export async function createCoachForHeadCoach(
 
 export async function resetTemporaryPasswordForCoach(
   actor: CoachProfile,
+  actorUserId: string,
   coachId: number,
+  reason: string,
 ): Promise<AdminMutationResult<ManagedCoachRecord>> {
   if (!actor.is_head_coach) {
     return { error: '只有總教練可以重設教練暫時密碼。' }
@@ -640,6 +703,19 @@ export async function resetTemporaryPasswordForCoach(
     return { error: '這位教練尚未綁定登入帳號，無法重設暫時密碼。' }
   }
 
+  try {
+    await recordPasswordResetAudit(admin, {
+      action: 'temporary_password_reset_attempt',
+      actorUserId,
+      targetUserId: targetCoach.user_id,
+      targetType: 'coach',
+      reason,
+      success: false,
+    })
+  } catch {
+    return { error: '無法建立安全稽核紀錄，因此未執行密碼重設。' }
+  }
+
   const tempPassword = generateTemporaryPassword()
 
   try {
@@ -656,7 +732,42 @@ export async function resetTemporaryPasswordForCoach(
     .eq('id', coachId)
 
   if (flagError) {
+    await recordResetAuditSafely(admin, {
+      action: 'temporary_password_reset',
+      actorUserId,
+      targetUserId: targetCoach.user_id,
+      targetType: 'coach',
+      reason,
+      success: false,
+    })
     return { error: '暫時密碼已更新，但標記首次改密碼狀態失敗。請稍後再試或聯絡管理員。' }
+  }
+
+  try {
+    await revokeTargetSessions(admin, targetCoach.user_id)
+  } catch {
+    await recordResetAuditSafely(admin, {
+      action: 'temporary_password_reset',
+      actorUserId,
+      targetUserId: targetCoach.user_id,
+      targetType: 'coach',
+      reason,
+      success: false,
+    })
+    return { error: '暫時密碼已更新，但撤銷既有登入狀態失敗。請聯絡管理員。' }
+  }
+
+  try {
+    await recordPasswordResetAudit(admin, {
+      action: 'temporary_password_reset',
+      actorUserId,
+      targetUserId: targetCoach.user_id,
+      targetType: 'coach',
+      reason,
+      success: true,
+    })
+  } catch {
+    return { error: '密碼與登入狀態已更新，但無法完成成功稽核紀錄。請立即聯絡管理員。' }
   }
 
   const { count, error: countError } = await admin
