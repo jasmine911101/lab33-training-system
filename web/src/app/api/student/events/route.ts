@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { requireStudentAccess } from '@/lib/auth/roles'
+import { requireStudentApiContext } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 import { GENERAL_EVENT_TYPES } from '@/lib/types/schedule-management'
 import { getAthleteScheduleBundle } from '@/services/schedule'
@@ -18,12 +18,9 @@ function normalizeEventType(value: string) {
 }
 
 export async function POST(request: Request) {
-  const context = await requireStudentAccess('/student/login')
+  const { context, response } = await requireStudentApiContext()
+  if (response || !context?.studentProfile) return response as NextResponse
   const studentProfile = context.studentProfile
-
-  if (!studentProfile) {
-    return NextResponse.json({ error: '找不到目前登入學員。' }, { status: 403 })
-  }
 
   const body = await request.json().catch(() => null)
   const title = text(body?.title)
@@ -34,6 +31,10 @@ export async function POST(request: Request) {
 
   if (!title) {
     return NextResponse.json({ error: '請輸入事件名稱。' }, { status: 400 })
+  }
+
+  if (title.length > 120 || notes.length > 2000) {
+    return NextResponse.json({ error: '事件名稱或備註內容過長。' }, { status: 400 })
   }
 
   if (!startDate) {
@@ -51,7 +52,12 @@ export async function POST(request: Request) {
   })
 
   if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 400 })
+    console.error('Failed to create athlete event', {
+      athleteId: studentProfile.id,
+      code: insertError.code,
+      message: insertError.message,
+    })
+    return NextResponse.json({ error: '新增事件失敗，請稍後再試。' }, { status: 500 })
   }
 
   const schedule = await getAthleteScheduleBundle(studentProfile.id)

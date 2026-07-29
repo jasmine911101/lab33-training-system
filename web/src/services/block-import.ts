@@ -33,6 +33,10 @@ const HEADER_ALIASES: Record<string, keyof BlockExerciseTemplateInput | ''> = {
 
 type ParsedWorkbookBlock = ImportedBlockTemplate
 
+export const MAX_WORKBOOK_SHEETS = 30
+export const MAX_WORKBOOK_ROWS_PER_SHEET = 500
+export const MAX_WORKBOOK_COLUMNS_PER_SHEET = 30
+
 function cellText(value: unknown) {
   if (value == null) return ''
   const text = String(value).trim()
@@ -129,6 +133,9 @@ function parseBlockSheet(sheetName: string, sheet: XLSX.WorkSheet): ParsedWorkbo
 
   const maxRow = bounds.e.r + 1
   const maxColumn = bounds.e.c + 1
+  if (maxRow > MAX_WORKBOOK_ROWS_PER_SHEET || maxColumn > MAX_WORKBOOK_COLUMNS_PER_SHEET) {
+    throw new Error('WORKBOOK_DIMENSION_LIMIT')
+  }
   const blockName = extractBlockTitle(sheet, sheetName, maxRow, maxColumn)
 
   let goal = ''
@@ -225,8 +232,15 @@ function parseBlockSheet(sheetName: string, sheet: XLSX.WorkSheet): ParsedWorkbo
 }
 
 export function parseBlockWorkbook(buffer: Buffer) {
-  const workbook = XLSX.read(buffer, { type: 'buffer' })
+  const workbook = XLSX.read(buffer, {
+    type: 'buffer',
+    sheetRows: MAX_WORKBOOK_ROWS_PER_SHEET + 1,
+  })
   const parsedBlocks: ParsedWorkbookBlock[] = []
+
+  if (workbook.SheetNames.length > MAX_WORKBOOK_SHEETS) {
+    throw new Error('WORKBOOK_SHEET_LIMIT')
+  }
 
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName]

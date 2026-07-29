@@ -673,7 +673,7 @@ export function CoachBlockManager({ initialBlocks }: CoachBlockManagerProps) {
           <div>
             <p className="lab-eyebrow">Block Library</p>
             <h2 className="lab-section-title mt-3">板塊詳細內容</h2>
-            <p className="lab-copy mt-3">保留 Streamlit 的查看與刪除流程。刪除板塊時，已安排給學員的對應課表也會一起移除。</p>
+            <p className="lab-copy mt-3">可在此查看與刪除板塊。刪除板塊時，已安排給學員的對應課表也會一起移除。</p>
           </div>
           <span className="lab-badge-primary">{blocks.length} 個板塊</span>
         </div>

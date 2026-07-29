@@ -82,7 +82,7 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
                 <h1 className="mt-2 text-3xl font-bold leading-none">{role === 'coach' ? 'Coach Hub' : 'Athlete Hub'}</h1>
                 <p className="mt-3 text-sm leading-7 text-slate-600">
                   {role === 'coach'
-                    ? '管理學員、查看已安排課表與一般事件，逐步從 Streamlit 遷移完整訓練管理流程。'
+                    ? '管理學員、查看已安排課表與一般事件，完成訓練管理流程。'
                     : '聚焦自己的課表、一般事件與訓練內容，後續再搬移回報與互動流程。'}
                 </p>
               </div>

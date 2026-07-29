@@ -92,7 +92,7 @@ export function LoginForm({ mode, initialError = null, initialMessage = null }: 
     const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
-      setError(error.message)
+      setError('Email 或密碼不正確，或登入暫時無法使用。')
       setIsSubmitting(false)
       return
     }
@@ -178,7 +178,7 @@ export function LoginForm({ mode, initialError = null, initialMessage = null }: 
     })
 
     if (oauthError) {
-      setError(oauthError.message)
+      setError('Google 登入暫時無法使用，請稍後再試。')
       setIsGoogleLoading(false)
     }
   }

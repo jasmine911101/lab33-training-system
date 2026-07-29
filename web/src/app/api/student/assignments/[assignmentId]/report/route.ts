@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { requireStudentAccess } from '@/lib/auth/roles'
+import { requireStudentApiContext } from '@/lib/auth/api'
 import { createClient } from '@/lib/supabase/server'
 
 function text(value: unknown) {
@@ -20,12 +20,9 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ assignmentId: string }> },
 ) {
-  const context = await requireStudentAccess('/student/login')
+  const { context, response } = await requireStudentApiContext()
+  if (response || !context?.studentProfile) return response as NextResponse
   const studentProfile = context.studentProfile
-
-  if (!studentProfile) {
-    return NextResponse.json({ error: '找不到目前登入學員。' }, { status: 403 })
-  }
 
   const { assignmentId } = await params
   const parsedAssignmentId = Number(assignmentId)
@@ -39,6 +36,10 @@ export async function POST(
     return NextResponse.json({ error: '沒有可儲存的回報內容。' }, { status: 400 })
   }
 
+  if (rows.length > 200) {
+    return NextResponse.json({ error: '單次回報的動作列不可超過 200 筆。' }, { status: 400 })
+  }
+
   const sessionSupabase = await createClient()
   const { data: assignmentRow, error: assignmentError } = await sessionSupabase
     .from('athlete_blocks')
@@ -48,7 +49,13 @@ export async function POST(
     .maybeSingle()
 
   if (assignmentError) {
-    return NextResponse.json({ error: assignmentError.message }, { status: 400 })
+    console.error('Failed to verify athlete assignment', {
+      athleteId: studentProfile.id,
+      assignmentId: parsedAssignmentId,
+      code: assignmentError.code,
+      message: assignmentError.message,
+    })
+    return NextResponse.json({ error: '讀取課表失敗，請稍後再試。' }, { status: 500 })
   }
 
   if (!assignmentRow) {
@@ -61,7 +68,13 @@ export async function POST(
     .eq('athlete_block_id', parsedAssignmentId)
 
   if (existingRowsError) {
-    return NextResponse.json({ error: existingRowsError.message }, { status: 400 })
+    console.error('Failed to read athlete exercise rows', {
+      athleteId: studentProfile.id,
+      assignmentId: parsedAssignmentId,
+      code: existingRowsError.code,
+      message: existingRowsError.message,
+    })
+    return NextResponse.json({ error: '讀取回報內容失敗，請稍後再試。' }, { status: 500 })
   }
 
   const validIds = new Set((existingRows ?? []).map((row) => Number(row.id)).filter((value) => Number.isFinite(value)))
@@ -82,7 +95,14 @@ export async function POST(
       .eq('athlete_block_id', parsedAssignmentId)
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 400 })
+      console.error('Failed to update athlete exercise report', {
+        athleteId: studentProfile.id,
+        assignmentId: parsedAssignmentId,
+        rowId,
+        code: updateError.code,
+        message: updateError.message,
+      })
+      return NextResponse.json({ error: '儲存訓練回報失敗，請稍後再試。' }, { status: 500 })
     }
   }
 

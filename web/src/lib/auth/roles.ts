@@ -21,8 +21,8 @@ export type AppContext = {
 
 export async function getAppContextForUser(user: User): Promise<AppContext> {
   const [coachProfile, studentProfile] = await Promise.all([
-    getCoachProfileForUser(user.id, user.email),
-    getStudentProfileForUser(user.id, user.email),
+    getCoachProfileForUser(user.id),
+    getStudentProfileForUser(user.id),
   ])
 
   const hasCoachAccess = Boolean(coachProfile)
@@ -45,10 +45,10 @@ export async function getAppContextForUser(user: User): Promise<AppContext> {
   }
 }
 
-export async function detectAppRole(userId: string, email?: string | null): Promise<AppRole> {
+export async function detectAppRole(userId: string): Promise<AppRole> {
   const [coachProfile, studentProfile] = await Promise.all([
-    getCoachProfileForUser(userId, email),
-    getStudentProfileForUser(userId, email),
+    getCoachProfileForUser(userId),
+    getStudentProfileForUser(userId),
   ])
 
   const hasCoachAccess = Boolean(coachProfile)

@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { resolveIdentityBoundProfile } from '@/lib/auth/identity-binding'
 
 export type CoachProfile = {
   id: number
@@ -24,36 +25,15 @@ async function findCoachByUserId(userId: string) {
     .from('coaches')
     .select('id, user_id, name, email, is_head_coach, must_change_password')
     .eq('user_id', userId)
-    .limit(1)
-    .maybeSingle()
+    .order('id', { ascending: true })
 
   if (error) throw error
-  return data as CoachProfile | null
+  return (data ?? []) as CoachProfile[]
 }
 
-async function findCoachByEmail(email: string) {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('coaches')
-    .select('id, user_id, name, email, is_head_coach, must_change_password')
-    .eq('email', email)
-    .limit(1)
-    .maybeSingle()
-
-  if (error) throw error
-  return data as CoachProfile | null
-}
-
-export async function getCoachProfileForUser(userId: string, email?: string | null) {
-  const coachByUserId = await findCoachByUserId(userId)
-  if (coachByUserId) return coachByUserId
-
-  if (email) {
-    const coachByEmail = await findCoachByEmail(email)
-    if (coachByEmail && (!coachByEmail.user_id || coachByEmail.user_id === userId)) return coachByEmail
-  }
-
-  return null
+export async function getCoachProfileForUser(userId: string) {
+  const resolution = resolveIdentityBoundProfile(await findCoachByUserId(userId), userId)
+  return resolution.status === 'matched' ? resolution.profile : null
 }
 
 export async function getManagedAthletesForCoach(coach: CoachProfile): Promise<ManagedAthlete[]> {

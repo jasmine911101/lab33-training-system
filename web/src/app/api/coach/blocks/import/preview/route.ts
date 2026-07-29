@@ -4,6 +4,8 @@ import { requireCoachApiContext } from '@/lib/auth/api'
 import { buildImportPreview, parseBlockWorkbook } from '@/services/block-import'
 import { fetchBlockIdentityRows } from '@/services/block-management'
 
+const MAX_WORKBOOK_BYTES = 5 * 1024 * 1024
+
 export async function POST(request: Request) {
   const { context, response } = await requireCoachApiContext()
   if (response || !context?.coachProfile) {
@@ -21,8 +23,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '目前只支援 .xlsx 檔案。' }, { status: 400 })
   }
 
-  const arrayBuffer = await file.arrayBuffer()
-  const parsedBlocks = parseBlockWorkbook(Buffer.from(arrayBuffer))
+  if (file.size > MAX_WORKBOOK_BYTES) {
+    return NextResponse.json({ error: 'Excel 檔案不可超過 5 MB。' }, { status: 413 })
+  }
+
+  let parsedBlocks
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    parsedBlocks = parseBlockWorkbook(Buffer.from(arrayBuffer))
+  } catch {
+    return NextResponse.json({ error: 'Excel 檔案格式不正確或內容超過允許範圍。' }, { status: 400 })
+  }
 
   if (parsedBlocks.length === 0) {
     return NextResponse.json({ error: '沒有讀到可匯入的模板。請確認每個工作表都有 LAB33 板塊模板格式。' }, { status: 400 })
