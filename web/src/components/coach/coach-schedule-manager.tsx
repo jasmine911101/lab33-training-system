@@ -1379,10 +1379,10 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                       key={option.key}
                       type="button"
                       onClick={() => setWeekRangeColorKey(option.key)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition ${isSelected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold transition ${isSelected ? `${option.chipClass} border-current ring-2 ring-current/20` : 'border-slate-300 bg-white text-slate-800 hover:border-slate-500'}`}
                       aria-pressed={isSelected}
                     >
-                      <span className={`h-3 w-3 rounded-full ${option.swatchClass}`} />
+                      <span className={`h-3.5 w-3.5 rounded-full ring-1 ring-black/10 ${option.swatchClass}`} />
                       <span>{option.name}</span>
                       <span className="text-xs">{isSelected ? '✓' : ''}</span>
                     </button>
@@ -1423,10 +1423,10 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
           <div className="mt-5 overflow-x-auto">
             <div className="min-w-[760px]">
               <div className="grid gap-px rounded-t-[1.25rem] bg-slate-200" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-                {['一', '二', '三', '四', '五', '六', '日'].map((day, index) => (
+                {['一', '二', '三', '四', '五', '六', '日'].map((day) => (
                   <div
                     key={day}
-                    className={`bg-white px-3 py-3 text-center text-xs font-semibold tracking-[0.16em] ${index >= 5 ? 'text-orange-500' : 'text-slate-500'}`}
+                    className="bg-white px-3 py-3 text-center text-xs font-semibold tracking-[0.16em] text-slate-600"
                   >
                     {day}
                   </div>
@@ -1452,7 +1452,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                       key={cell.date}
                       type="button"
                       onClick={() => selectDate(cell.date, cell.items.length > 2)}
-                      className={`relative flex min-h-[132px] w-full min-w-0 flex-col bg-white p-3 text-left transition hover:z-10 hover:bg-slate-50 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 ${isSelected ? 'z-10 bg-orange-50 ring-2 ring-inset ring-orange-400' : ''} ${cell.inCurrentMonth ? 'text-slate-900' : 'text-slate-300'}`}
+                      className={`relative flex min-h-[132px] w-full min-w-0 flex-col bg-white p-3 text-left transition hover:z-10 hover:bg-slate-50 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${isSelected ? 'z-10 bg-slate-50 ring-2 ring-inset ring-slate-900' : ''} ${cell.inCurrentMonth ? 'text-slate-900' : 'text-slate-300'}`}
                     >
                       {weekMarker ? (
                         <div
@@ -1468,14 +1468,14 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
 
                       <div className="flex items-start justify-between gap-2">
                         <div className="relative z-10 space-y-2">
-                          <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${isSelected ? 'bg-orange-500 text-white' : isToday ? 'bg-slate-900 text-white' : cell.inCurrentMonth ? 'bg-slate-100 text-slate-900' : 'bg-slate-100 text-slate-400'}`}>
+                          <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${isSelected || isToday ? 'bg-slate-900 text-white' : cell.inCurrentMonth ? 'bg-slate-100 text-slate-900' : 'bg-slate-100 text-slate-400'}`}>
                             {cell.day}
                           </div>
                         </div>
                         {(assignmentCount > 0 || eventCount > 0) ? (
                           <div className="flex flex-col items-end gap-1 text-[10px] font-semibold">
-                            {assignmentCount > 0 ? <span className="rounded-full bg-orange-100 px-2 py-1 text-orange-700">課表 {assignmentCount}</span> : null}
-                            {eventCount > 0 ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700">事件 {eventCount}</span> : null}
+                            {assignmentCount > 0 ? <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">課表 {assignmentCount}</span> : null}
+                            {eventCount > 0 ? <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">事件 {eventCount}</span> : null}
                           </div>
                         ) : null}
                       </div>
@@ -1484,7 +1484,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                         {previewItems.map((item) => (
                           <div
                             key={`${cell.date}-${item.kind}-${item.id}`}
-                            className={`rounded-xl px-2.5 py-1.5 text-[11px] font-medium leading-4 ${item.kind === 'assignment' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'} ${cell.inCurrentMonth ? '' : 'opacity-70'}`}
+                            className={`rounded-xl bg-slate-100 px-2.5 py-1.5 text-[11px] font-medium leading-4 text-slate-700 ${cell.inCurrentMonth ? '' : 'opacity-70'}`}
                             title={`${item.title}｜${item.meta}`}
                           >
                             {item.kind === 'assignment' ? (

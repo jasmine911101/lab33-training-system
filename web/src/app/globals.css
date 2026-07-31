@@ -8,14 +8,14 @@
   --color-primary: #111111;
   --color-primary-strong: #000000;
   --color-primary-soft: #eeeeea;
-  --color-accent: #15803d;
-  --color-accent-soft: #dcfce7;
-  --color-info: #2563eb;
-  --color-info-soft: #dbeafe;
-  --color-warning: #f59e0b;
-  --color-warning-soft: #fef3c7;
-  --color-danger: #ef4444;
-  --color-danger-soft: #fee2e2;
+  --color-accent: #55715d;
+  --color-accent-soft: #e5eee6;
+  --color-info: #586f86;
+  --color-info-soft: #e7edf3;
+  --color-warning: #8b704c;
+  --color-warning-soft: #f2eadc;
+  --color-danger: #925f62;
+  --color-danger-soft: #f3e6e7;
 
   --color-bg: #f7f7f5;
   --color-bg-elevated: #fcfcfa;
@@ -207,7 +207,7 @@ a {
 
   .lab-badge-success {
     background: var(--color-accent-soft);
-    color: #15803d;
+    color: var(--color-accent);
   }
 
   .lab-badge-info {
@@ -217,7 +217,7 @@ a {
 
   .lab-badge-warning {
     background: var(--color-warning-soft);
-    color: #a16207;
+    color: var(--color-warning);
   }
 
   .lab-shell-sidebar {
@@ -314,32 +314,29 @@ a {
   }
 }
 
-:where(.bg-rose-50,.bg-rose-100,.bg-rose-500,.bg-rose-600,.bg-emerald-50,.bg-emerald-100,.bg-emerald-500,.bg-emerald-600,.bg-amber-50,.bg-amber-100,.bg-amber-500,.bg-sky-50,.bg-sky-100,.bg-sky-500,.bg-blue-50,.bg-orange-50,.bg-orange-100,.bg-orange-500) { background-color: var(--color-surface-muted) !important; }
-:where(.text-rose-500,.text-rose-600,.text-rose-700,.text-rose-800,.text-rose-900,.text-emerald-700,.text-emerald-800,.text-amber-700,.text-amber-800,.text-amber-900,.text-sky-700,.text-sky-800,.text-blue-900,.text-orange-500,.text-orange-600,.text-orange-700) { color: var(--color-text-muted) !important; }
-
 /* Muted period colours: colour remains clear without breaking the neutral brand system. */
-.lab-week-sky-swatch { background: #7f9aa8; }
-.lab-week-sky-band, .lab-week-sky-chip { background: #e3ecef; color: #465b65; }
-.lab-week-sky-badge { background: #7f9aa8; color: #fff; }
+.lab-week-sky-swatch { background: #6f8999; }
+.lab-week-sky-band, .lab-week-sky-chip { background: #dfe9ed; color: #385461; }
+.lab-week-sky-badge { background: #6f8999; color: #fff; }
 
-.lab-week-emerald-swatch { background: #879b86; }
-.lab-week-emerald-band, .lab-week-emerald-chip { background: #e7eee5; color: #4f6250; }
-.lab-week-emerald-badge { background: #879b86; color: #fff; }
+.lab-week-emerald-swatch { background: #789179; }
+.lab-week-emerald-band, .lab-week-emerald-chip { background: #e1ebe0; color: #405b43; }
+.lab-week-emerald-badge { background: #789179; color: #fff; }
 
-.lab-week-amber-swatch { background: #b59a6b; }
-.lab-week-amber-band, .lab-week-amber-chip { background: #f1eadc; color: #6e5d3f; }
-.lab-week-amber-badge { background: #b59a6b; color: #fff; }
+.lab-week-amber-swatch { background: #aa8d5f; }
+.lab-week-amber-band, .lab-week-amber-chip { background: #efe6d5; color: #66512e; }
+.lab-week-amber-badge { background: #aa8d5f; color: #fff; }
 
-.lab-week-violet-swatch { background: #988aa5; }
-.lab-week-violet-band, .lab-week-violet-chip { background: #eee8f1; color: #5e5269; }
-.lab-week-violet-badge { background: #988aa5; color: #fff; }
+.lab-week-violet-swatch { background: #8b7c9a; }
+.lab-week-violet-band, .lab-week-violet-chip { background: #ebe5ee; color: #52435e; }
+.lab-week-violet-badge { background: #8b7c9a; color: #fff; }
 
-.lab-week-rose-swatch { background: #b88790; }
-.lab-week-rose-band, .lab-week-rose-chip { background: #f3e6e8; color: #6e4c53; }
-.lab-week-rose-badge { background: #b88790; color: #fff; }
+.lab-week-rose-swatch { background: #ad7b84; }
+.lab-week-rose-band, .lab-week-rose-chip { background: #f0e2e4; color: #693f47; }
+.lab-week-rose-badge { background: #ad7b84; color: #fff; }
 
-.lab-week-slate-swatch { background: #899198; }
-.lab-week-slate-band, .lab-week-slate-chip { background: #e9ecee; color: #535b60; }
-.lab-week-slate-badge { background: #899198; color: #fff; }
+.lab-week-slate-swatch { background: #7d888e; }
+.lab-week-slate-band, .lab-week-slate-chip { background: #e5e9ea; color: #49545a; }
+.lab-week-slate-badge { background: #7d888e; color: #fff; }
 @media (hover: hover) and (pointer: fine) { .lab-card:hover { border-color: rgba(0,0,0,.18); box-shadow: var(--shadow-strong); transform: translateY(-2px); } }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: 1ms !important; transition-duration: 1ms !important; } }
