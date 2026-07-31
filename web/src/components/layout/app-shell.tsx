@@ -26,12 +26,14 @@ function getNavItems(role: Exclude<AppRole, 'unknown'>): NavItem[] {
     return [
       { href: '/coach', label: '學員管理', shortLabel: '學員', icon: 'A' },
       { href: '/coach/blocks', label: '板塊管理', shortLabel: '板塊', icon: 'B' },
+      { href: '/coach/qa', label: 'QA 庫', shortLabel: 'QA', icon: 'Q' },
       { href: '/', label: '網站首頁', shortLabel: '首頁', icon: 'L' },
     ]
   }
 
   return [
     { href: '/student', label: '我的課表', shortLabel: '課表', icon: 'T' },
+    { href: '/student/qa', label: 'QA 庫', shortLabel: 'QA', icon: 'Q' },
     { href: '/', label: '網站首頁', shortLabel: '首頁', icon: 'L' },
   ]
 }
