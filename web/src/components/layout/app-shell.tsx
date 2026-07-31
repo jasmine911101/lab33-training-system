@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { LogoutButton } from '@/components/auth/logout-button'
+import { BrandLogo } from '@/components/layout/brand-logo'
 import type { AppRole } from '@/lib/auth/roles'
 
 type AppShellProps = {
@@ -54,6 +55,7 @@ function NavLinks({ items, currentPath }: { items: NavItem[]; currentPath: strin
             key={item.href}
             href={item.href}
             className={`lab-nav-link ${isActive ? 'lab-nav-link-active' : ''}`}
+            aria-current={isActive ? 'page' : undefined}
           >
             <span className="flex items-center gap-3">
               <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white text-xs font-black text-slate-500 shadow-sm">
@@ -77,25 +79,12 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
       <div className="lab-app-shell">
         <aside className="lab-shell-sidebar">
           <div className="lab-shell-panel">
-            <div className="lab-shell-brand">
-              <div className="lab-brand-mark">33</div>
-              <div>
-                <p className="lab-eyebrow">LAB33 Training System</p>
-                <h1 className="mt-2 text-3xl font-bold leading-none">{role === 'coach' ? 'Coach Hub' : 'Athlete Hub'}</h1>
-                <p className="mt-3 text-sm leading-7 text-slate-600">
-                  {role === 'coach'
-                    ? '管理學員、查看已安排課表與一般事件，完成訓練管理流程。'
-                    : '聚焦自己的課表、一般事件與訓練內容，後續再搬移回報與互動流程。'}
-                </p>
-              </div>
-            </div>
+            <Link href="/" className="block w-fit" aria-label="LAB33 首頁"><BrandLogo priority /></Link>
+            <h1 className="mt-4 text-3xl font-bold leading-none text-slate-950">{role === 'coach' ? '教練端' : '學員端'}</h1>
           </div>
 
           <div className="lab-shell-panel">
-            <p className="lab-eyebrow">Navigation</p>
-            <div className="mt-4">
-              <NavLinks items={navItems} currentPath={currentPath} />
-            </div>
+            <NavLinks items={navItems} currentPath={currentPath} />
           </div>
 
           <div className="lab-shell-panel lg:mt-auto">
@@ -111,10 +100,8 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
 
         <div className="min-w-0">
           <header className="lab-mobile-topbar">
-            <div>
-              <p className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-slate-500">LAB33</p>
-              <h1 className="font-display text-2xl leading-none text-slate-900">{title}</h1>
-            </div>
+            <Link href="/" aria-label="LAB33 首頁"><BrandLogo className="w-24" priority /></Link>
+            <h1 className="font-display text-2xl leading-none text-slate-900">{title}</h1>
             <span className={role === 'coach' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
           </header>
 
@@ -122,9 +109,8 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
             <div className="lab-card overflow-hidden p-6 sm:p-7">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div className="max-w-3xl">
-                  <p className="lab-eyebrow">Logged In Experience</p>
-                  <h2 className="lab-section-title mt-3">{title}</h2>
-                  <p className="lab-copy mt-3">{description}</p>
+                  <h2 className="lab-section-title">{title}</h2>
+                  <p className="lab-copy mt-2">{description}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={role === 'coach' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
@@ -134,7 +120,7 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
             </div>
           )}
 
-          <main className={`${hideHeaderCard ? '' : 'mt-6'} flex-1`}>{children}</main>
+          <main id="main-content" className={`${hideHeaderCard ? '' : 'mt-6'} flex-1`}>{children}</main>
         </div>
       </div>
 

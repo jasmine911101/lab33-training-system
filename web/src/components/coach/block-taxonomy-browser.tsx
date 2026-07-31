@@ -11,6 +11,7 @@ type Entry = {
   name: string
   href: string
   meta?: string
+  actions?: ReactNode
 }
 
 type Props = {
@@ -34,6 +35,8 @@ export function BlockTaxonomyBrowser({
   createForm,
   aside,
 }: Props) {
+  const parentHref = [...breadcrumbs].reverse().find((breadcrumb) => breadcrumb.href)?.href
+
   return (
     <div className="space-y-6">
       <article className="lab-card p-6 sm:p-7">
@@ -50,6 +53,12 @@ export function BlockTaxonomyBrowser({
               </div>
             ))}
           </nav>
+        ) : null}
+
+        {parentHref ? (
+          <Link href={parentHref} className="lab-btn-secondary !min-h-10 mb-5 px-4 py-2 text-sm">
+            ← 返回上一層
+          </Link>
         ) : null}
 
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -78,20 +87,19 @@ export function BlockTaxonomyBrowser({
         ) : (
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {entries.map((entry) => (
-              <Link
-                key={entry.id}
-                href={entry.href}
-                className="group rounded-[1.25rem] border border-slate-200 bg-white px-5 py-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_50px_rgba(15,23,42,0.08)]"
-              >
+              <div key={entry.id} className="group rounded-[1.25rem] border border-slate-200 bg-white px-5 py-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+                <Link href={entry.href} className="block rounded-[0.9rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <p className="lab-eyebrow text-[0.72rem]">資料夾</p>
-                    <h3 className="mt-3 text-xl font-bold text-slate-900 group-hover:text-orange-600">{entry.name}</h3>
+                    <h3 className="mt-3 truncate text-xl font-bold text-slate-900 group-hover:text-orange-600">{entry.name}</h3>
                     {entry.meta ? <p className="mt-2 text-sm text-slate-500">{entry.meta}</p> : null}
                   </div>
                   <span className="lab-badge bg-slate-100 text-slate-500 group-hover:bg-orange-100 group-hover:text-orange-700">前往</span>
                 </div>
-              </Link>
+                </Link>
+                {entry.actions}
+              </div>
             ))}
           </div>
         )}

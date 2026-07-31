@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 
 import { BlockTaxonomyBrowser } from '@/components/coach/block-taxonomy-browser'
 import { BlockTaxonomyCreateForm } from '@/components/coach/block-taxonomy-create-form'
+import { BlockTaxonomyEntryActions } from '@/components/coach/block-taxonomy-entry-actions'
 import { BlockTaxonomyErrorState } from '@/components/coach/block-taxonomy-error-state'
 import { CoachBlocksShell } from '@/components/coach/coach-blocks-shell'
 import { requireCoachAccess } from '@/lib/auth/roles'
@@ -51,6 +52,7 @@ export default async function SportBlocksPage({ params }: { params: Promise<{ sp
             name: ageGroup.name,
             href: `/coach/blocks/sport/${sport.id}/age/${ageGroup.id}`,
             meta: `${ageGroup.trainingCategoryCount} 個訓練分類`,
+            actions: <BlockTaxonomyEntryActions name={ageGroup.name} endpoint={`/api/coach/block-taxonomy/age-groups/${ageGroup.id}`} parentHref={`/coach/blocks/sport/${sport.id}`} />,
           }))}
           emptyMessage="這個專項底下還沒有年齡分級。"
           createForm={<BlockTaxonomyCreateForm actionLabel="新增年齡分級" endpoint={`/api/coach/block-taxonomy/sports/${sport.id}/age-groups`} placeholder="例如：成人、大學生、高中" />}

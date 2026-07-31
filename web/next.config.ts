@@ -1,6 +1,8 @@
 import path from 'node:path'
 import type { NextConfig } from 'next'
 
+const scriptSource = ["script-src 'self' 'unsafe-inline'", ...(process.env.NODE_ENV === 'development' ? ["'unsafe-eval'"] : [])].join(' ')
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   turbopack: {
@@ -22,7 +24,7 @@ const nextConfig: NextConfig = {
               "img-src 'self' data: blob:",
               "font-src 'self' data:",
               "style-src 'self' 'unsafe-inline'",
-              "script-src 'self' 'unsafe-inline'",
+              scriptSource,
               "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
               'upgrade-insecure-requests',
             ].join('; '),

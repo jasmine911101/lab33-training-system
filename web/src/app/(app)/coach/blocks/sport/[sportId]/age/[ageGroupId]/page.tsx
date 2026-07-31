@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 
 import { BlockTaxonomyBrowser } from '@/components/coach/block-taxonomy-browser'
 import { BlockTaxonomyCreateForm } from '@/components/coach/block-taxonomy-create-form'
+import { BlockTaxonomyEntryActions } from '@/components/coach/block-taxonomy-entry-actions'
 import { BlockTaxonomyErrorState } from '@/components/coach/block-taxonomy-error-state'
 import { CoachBlocksShell } from '@/components/coach/coach-blocks-shell'
 import { requireCoachAccess } from '@/lib/auth/roles'
@@ -55,6 +56,7 @@ export default async function AgeGroupBlocksPage({ params }: { params: Promise<{
             name: trainingCategory.name,
             href: `/coach/blocks/sport/${sport.id}/age/${ageGroup.id}/category/${trainingCategory.id}`,
             meta: `${trainingCategory.blockCount} 個板塊`,
+            actions: <BlockTaxonomyEntryActions name={trainingCategory.name} endpoint={`/api/coach/block-taxonomy/training-categories/${trainingCategory.id}`} parentHref={`/coach/blocks/sport/${sport.id}/age/${ageGroup.id}`} />,
           }))}
           emptyMessage="這個年齡分級底下還沒有訓練分類。"
           createForm={<BlockTaxonomyCreateForm actionLabel="新增訓練分類" endpoint={`/api/coach/block-taxonomy/age-groups/${ageGroup.id}/training-categories`} placeholder="例如：功能性訓練、爆發力、恢復" />}

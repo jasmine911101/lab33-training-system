@@ -98,8 +98,8 @@ export function PasswordRecoveryForm({ recoveryReady }: { recoveryReady: boolean
           disabled={isSubmitting}
         />
       </div>
-      {error ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
-      {message ? <p className="rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</p> : null}
+      {error ? <p role="alert" aria-live="polite" className="lab-notice">{error}</p> : null}
+      {message ? <p aria-live="polite" className="lab-notice">{message}</p> : null}
       <button type="submit" disabled={isSubmitting} className="lab-btn-primary w-full disabled:opacity-60">
         {isSubmitting ? '更新中...' : '更新密碼'}
       </button>

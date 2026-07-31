@@ -1,5 +1,6 @@
 import { BlockTaxonomyBrowser } from '@/components/coach/block-taxonomy-browser'
 import { BlockTaxonomyCreateForm } from '@/components/coach/block-taxonomy-create-form'
+import { BlockTaxonomyEntryActions } from '@/components/coach/block-taxonomy-entry-actions'
 import { BlockTaxonomyErrorState } from '@/components/coach/block-taxonomy-error-state'
 import { CoachBlocksShell } from '@/components/coach/coach-blocks-shell'
 import { requireCoachAccess } from '@/lib/auth/roles'
@@ -40,6 +41,7 @@ export default async function CoachBlocksPage() {
               name: sport.name,
               href: `/coach/blocks/sport/${sport.id}`,
               meta: `${sport.ageGroupCount} 個年齡分級`,
+              actions: <BlockTaxonomyEntryActions name={sport.name} endpoint={`/api/coach/block-taxonomy/sports/${sport.id}`} parentHref="/coach/blocks" />,
             })),
             {
               id: 'uncategorized',

@@ -262,6 +262,104 @@ export async function createTrainingCategory(ageGroupId: number, name: string): 
   return { data: data as BlockTaxonomyTrainingCategoryRecord, message: '已建立訓練分類。' }
 }
 
+async function updateTaxonomyName<T>(table: string, id: number, name: string, select: string, duplicateMessage: string): Promise<AdminMutationResult<T>> {
+  const cleanedName = cleanName(name)
+  if (!cleanedName) return { error: '請輸入分類名稱。' }
+
+  const { admin, error } = await ensureAdminClient()
+  if (!admin) return { error: error ?? '無法更新分類。' }
+
+  const { data, error: updateError } = await admin
+    .from(table)
+    .update({ name: cleanedName })
+    .eq('id', id)
+    .select(select)
+    .maybeSingle()
+
+  if (updateError || !data) {
+    return { error: humanizeUniqueViolation(updateError?.message ?? '找不到這個分類。', duplicateMessage) }
+  }
+
+  return { data: data as T, message: '分類名稱已更新。' }
+}
+
+export async function updateSport(sportId: number, name: string) {
+  return await updateTaxonomyName<BlockTaxonomySportRecord>(
+    'block_taxonomy_sports',
+    sportId,
+    name,
+    'id, name, sort_order, is_active, created_at, updated_at',
+    '這個專項名稱已存在。',
+  )
+}
+
+export async function updateAgeGroup(ageGroupId: number, name: string) {
+  return await updateTaxonomyName<BlockTaxonomyAgeGroupRecord>(
+    'block_taxonomy_age_groups',
+    ageGroupId,
+    name,
+    'id, sport_id, name, sort_order, is_active, created_at, updated_at',
+    '這個專項底下已存在相同年齡分級。',
+  )
+}
+
+export async function updateTrainingCategory(trainingCategoryId: number, name: string) {
+  return await updateTaxonomyName<BlockTaxonomyTrainingCategoryRecord>(
+    'block_taxonomy_training_categories',
+    trainingCategoryId,
+    name,
+    'id, age_group_id, name, sort_order, is_active, created_at, updated_at',
+    '這個年齡分級底下已存在相同訓練分類。',
+  )
+}
+
+async function deleteTaxonomyEntry(table: string, id: number, dependentTable: string, dependentColumn: string, blockedMessage: string): Promise<AdminMutationResult<{ id: number }>> {
+  const { admin, error } = await ensureAdminClient()
+  if (!admin) return { error: error ?? '無法刪除分類。' }
+
+  const { count, error: countError } = await admin
+    .from(dependentTable)
+    .select('id', { count: 'exact', head: true })
+    .eq(dependentColumn, id)
+
+  if (countError) return { error: countError.message }
+  if ((count ?? 0) > 0) return { error: blockedMessage.replace('{count}', String(count)) }
+
+  const { error: deleteError } = await admin.from(table).delete().eq('id', id)
+  if (deleteError) return { error: deleteError.message }
+  return { data: { id }, message: '分類已刪除。' }
+}
+
+export async function deleteSport(sportId: number) {
+  return await deleteTaxonomyEntry(
+    'block_taxonomy_sports',
+    sportId,
+    'block_taxonomy_age_groups',
+    'sport_id',
+    '此專項仍有 {count} 個年齡分級；請先處理下層資料夾。',
+  )
+}
+
+export async function deleteAgeGroup(ageGroupId: number) {
+  return await deleteTaxonomyEntry(
+    'block_taxonomy_age_groups',
+    ageGroupId,
+    'block_taxonomy_training_categories',
+    'age_group_id',
+    '此年齡分級仍有 {count} 個訓練分類；請先處理下層資料夾。',
+  )
+}
+
+export async function deleteTrainingCategory(trainingCategoryId: number) {
+  return await deleteTaxonomyEntry(
+    'block_taxonomy_training_categories',
+    trainingCategoryId,
+    'blocks',
+    'training_category_id',
+    '此訓練分類仍有 {count} 個板塊；請先移除或重新分類板塊。',
+  )
+}
+
 export async function getTaxonomySelectionSnapshot(): Promise<{
   sports: BlockTaxonomySportRecord[]
   ageGroups: BlockTaxonomyAgeGroupRecord[]

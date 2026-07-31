@@ -187,7 +187,7 @@ export function LoginForm({ mode, initialError = null, initialMessage = null }: 
     <form onSubmit={handleSubmit} className="lab-card space-y-5 p-6 sm:p-7">
       <div className="space-y-3">
         <button type="button" onClick={() => void handleGoogleLogin()} disabled={isSubmitting || isGoogleLoading} className="lab-btn-primary w-full disabled:opacity-60">
-          {isGoogleLoading ? 'Google 驗證中...' : '使用 Google 登入'}
+          {isGoogleLoading ? 'Google 驗證中…' : '使用 Google 登入'}
         </button>
         <p className="text-center text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">備用：Email + Password</p>
       </div>
@@ -198,7 +198,10 @@ export function LoginForm({ mode, initialError = null, initialMessage = null }: 
         </label>
         <input
           id={`${mode}-email`}
+          name="email"
           type="email"
+          autoComplete="email"
+          spellCheck={false}
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           className="lab-input"
@@ -212,17 +215,19 @@ export function LoginForm({ mode, initialError = null, initialMessage = null }: 
         </label>
         <input
           id={`${mode}-password`}
+          name="password"
           type="password"
+          autoComplete="current-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           className="lab-input"
           required
         />
       </div>
-      {error ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
-      {message ? <p className="rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</p> : null}
+      {error ? <p role="alert" aria-live="polite" className="lab-notice">{error}</p> : null}
+      {message ? <p aria-live="polite" className="lab-notice">{message}</p> : null}
       <button type="submit" disabled={isSubmitting || isGoogleLoading} className="lab-btn-secondary w-full disabled:opacity-60">
-        {isSubmitting ? '登入中...' : '使用 Email + Password 登入'}
+        {isSubmitting ? '登入中…' : '使用 Email + Password 登入'}
       </button>
       <button
         type="button"
@@ -231,7 +236,7 @@ export function LoginForm({ mode, initialError = null, initialMessage = null }: 
         className="lab-btn-secondary w-full disabled:opacity-60"
       >
         {isSendingRecovery
-          ? '寄送中...'
+          ? '寄送中…'
           : recoveryCooldown > 0
             ? `${recoveryCooldown} 秒後可重新寄送`
             : '忘記密碼？寄送重設連結'}

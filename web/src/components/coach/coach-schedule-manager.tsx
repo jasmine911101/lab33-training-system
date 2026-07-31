@@ -97,50 +97,50 @@ const WEEK_MARKER_COLORS = [
   {
     key: 'sky',
     name: '藍色',
-    bandClass: 'bg-sky-100/90 text-sky-800',
-    badgeClass: 'bg-sky-600 text-white',
-    chipClass: 'bg-sky-100 text-sky-800',
-    swatchClass: 'bg-sky-500',
+    bandClass: 'lab-week-sky-band',
+    badgeClass: 'lab-week-sky-badge',
+    chipClass: 'lab-week-sky-chip',
+    swatchClass: 'lab-week-sky-swatch',
   },
   {
     key: 'emerald',
     name: '綠色',
-    bandClass: 'bg-emerald-100/90 text-emerald-800',
-    badgeClass: 'bg-emerald-600 text-white',
-    chipClass: 'bg-emerald-100 text-emerald-800',
-    swatchClass: 'bg-emerald-500',
+    bandClass: 'lab-week-emerald-band',
+    badgeClass: 'lab-week-emerald-badge',
+    chipClass: 'lab-week-emerald-chip',
+    swatchClass: 'lab-week-emerald-swatch',
   },
   {
     key: 'amber',
     name: '橘色',
-    bandClass: 'bg-amber-100/90 text-amber-900',
-    badgeClass: 'bg-amber-500 text-white',
-    chipClass: 'bg-amber-100 text-amber-900',
-    swatchClass: 'bg-amber-500',
+    bandClass: 'lab-week-amber-band',
+    badgeClass: 'lab-week-amber-badge',
+    chipClass: 'lab-week-amber-chip',
+    swatchClass: 'lab-week-amber-swatch',
   },
   {
     key: 'violet',
     name: '紫色',
-    bandClass: 'bg-violet-100/90 text-violet-800',
-    badgeClass: 'bg-violet-600 text-white',
-    chipClass: 'bg-violet-100 text-violet-800',
-    swatchClass: 'bg-violet-500',
+    bandClass: 'lab-week-violet-band',
+    badgeClass: 'lab-week-violet-badge',
+    chipClass: 'lab-week-violet-chip',
+    swatchClass: 'lab-week-violet-swatch',
   },
   {
     key: 'rose',
     name: '粉色',
-    bandClass: 'bg-rose-100/90 text-rose-800',
-    badgeClass: 'bg-rose-500 text-white',
-    chipClass: 'bg-rose-100 text-rose-800',
-    swatchClass: 'bg-rose-500',
+    bandClass: 'lab-week-rose-band',
+    badgeClass: 'lab-week-rose-badge',
+    chipClass: 'lab-week-rose-chip',
+    swatchClass: 'lab-week-rose-swatch',
   },
   {
     key: 'slate',
     name: '灰色',
-    bandClass: 'bg-slate-200/90 text-slate-800',
-    badgeClass: 'bg-slate-600 text-white',
-    chipClass: 'bg-slate-200 text-slate-800',
-    swatchClass: 'bg-slate-500',
+    bandClass: 'lab-week-slate-band',
+    badgeClass: 'lab-week-slate-badge',
+    chipClass: 'lab-week-slate-chip',
+    swatchClass: 'lab-week-slate-swatch',
   },
 ] as const
 
@@ -966,7 +966,10 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [visibleMonth, setVisibleMonth] = useState(initialDate.slice(0, 7))
   const weekMarkerStorageKey = `lab33-athlete-week-markers-${athleteId}`
-  const [weekMarkers, setWeekMarkers] = useState<WeekMarker[]>(() => loadWeekMarkers(weekMarkerStorageKey))
+  // Keep the first client render identical to the server render. Local storage is
+  // deliberately read after mounting, because it does not exist during SSR.
+  const [weekMarkers, setWeekMarkers] = useState<WeekMarker[]>([])
+  const [hasLoadedWeekMarkers, setHasLoadedWeekMarkers] = useState(false)
   const [weekRangeStartDate, setWeekRangeStartDate] = useState(initialDate)
   const [weekRangeEndDate, setWeekRangeEndDate] = useState(initialDate)
   const [weekRangeNumber, setWeekRangeNumber] = useState('1')
@@ -980,7 +983,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
     ({
       ...defaultAssignmentForm(initialDate),
       blockId: String(initialVisibleBlocks[0]?.id ?? ''),
-      weekNum: resolveWeekMarker(initialDate, loadWeekMarkers(weekMarkerStorageKey))?.weekNum ?? '1',
+      weekNum: '1',
       trainingCategory:
         taxonomy.trainingCategories.find((category) => category.id === initialTrainingCategoryId)?.name ??
         TRAINING_CATEGORIES[0],
@@ -1133,8 +1136,23 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
   }, [calendarItems, visibleMonth, weekMarkers])
 
   useEffect(() => {
+    const storedMarkers = loadWeekMarkers(weekMarkerStorageKey)
+    const frameId = window.requestAnimationFrame(() => {
+      setWeekMarkers(storedMarkers)
+      setAssignmentForm((current) => ({
+        ...current,
+        weekNum: resolveWeekMarker(initialDate, storedMarkers)?.weekNum ?? current.weekNum,
+      }))
+      setHasLoadedWeekMarkers(true)
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [initialDate, weekMarkerStorageKey])
+
+  useEffect(() => {
+    if (!hasLoadedWeekMarkers) return
     window.localStorage.setItem(weekMarkerStorageKey, JSON.stringify(weekMarkers))
-  }, [weekMarkerStorageKey, weekMarkers])
+  }, [hasLoadedWeekMarkers, weekMarkerStorageKey, weekMarkers])
 
   useEffect(() => {
     if (!isDayModalOpen) return
@@ -1353,7 +1371,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
 
             <div className="mt-4 space-y-2">
               <p className="text-sm font-semibold text-slate-700">週期顏色</p>
-              <div className="flex flex-wrap gap-2">
+              <div className="lab-week-color-picker flex flex-wrap gap-2" aria-label="週期顏色選擇">
                 {WEEK_MARKER_COLORS.map((option) => {
                   const isSelected = option.key === weekRangeColorKey
                   return (
@@ -1438,8 +1456,14 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                     >
                       {weekMarker ? (
                         <div
-                          className={`pointer-events-none absolute left-1 right-1 top-12 h-9 ${weekColor.bandClass} ${isWeekSegmentStart ? 'rounded-l-xl pl-1' : 'rounded-l-md'} ${isWeekSegmentEnd ? 'rounded-r-xl pr-1' : 'rounded-r-md'}`}
-                        />
+                          className={`pointer-events-none absolute -left-px -right-px top-11 z-0 flex h-7 items-center ${weekColor.badgeClass} ${isWeekSegmentStart ? 'rounded-l-lg pl-2' : ''} ${isWeekSegmentEnd ? 'rounded-r-lg pr-2' : ''}`}
+                        >
+                          {isWeekSegmentStart ? (
+                            <span className="min-w-0 truncate text-[11px] font-semibold leading-none">
+                              Week {weekMarker.weekNum}{weekMarker.note ? ` · ${weekMarker.note}` : ''}
+                            </span>
+                          ) : null}
+                        </div>
                       ) : null}
 
                       <div className="flex items-start justify-between gap-2">
@@ -1447,16 +1471,6 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                           <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${isSelected ? 'bg-orange-500 text-white' : isToday ? 'bg-slate-900 text-white' : cell.inCurrentMonth ? 'bg-slate-100 text-slate-900' : 'bg-slate-100 text-slate-400'}`}>
                             {cell.day}
                           </div>
-                          {weekMarker ? (
-                            <span className={`inline-flex max-w-[6.25rem] flex-col rounded-xl px-2 py-1 text-[10px] font-semibold leading-3 ${weekColor.badgeClass}`}>
-                              <span>W{weekMarker.weekNum}</span>
-                              {weekMarker.note ? (
-                                <span className="mt-0.5 truncate text-[9px] opacity-90" title={weekMarker.note}>
-                                  {weekMarker.note}
-                                </span>
-                              ) : null}
-                            </span>
-                          ) : null}
                         </div>
                         {(assignmentCount > 0 || eventCount > 0) ? (
                           <div className="flex flex-col items-end gap-1 text-[10px] font-semibold">

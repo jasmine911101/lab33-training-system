@@ -566,6 +566,7 @@ function CoachManagementSection({
 }) {
   const filteredCoaches = useMemo(() => rankCoachesBySearch(coaches, search), [coaches, search])
   const headCoachCount = useMemo(() => coaches.filter((coach) => coach.is_head_coach).length, [coaches])
+  const [openCoachMenuId, setOpenCoachMenuId] = useState<number | null>(null)
 
   return (
     <article className="lab-card p-6 sm:p-7">
@@ -646,61 +647,20 @@ function CoachManagementSection({
                         {formatCreatedDate(coach.created_at)}
                       </td>
                       <td className="border-b border-slate-100 px-6 py-4 text-right last:border-b-0">
-                        <details className="relative inline-block text-left">
-                          <summary className="inline-flex min-h-10 cursor-pointer list-none items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-lg font-bold leading-none text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
-                            ⋯
-                            <span className="sr-only">開啟教練操作選單</span>
-                          </summary>
-                          <div className="absolute right-0 z-40 mt-2 min-w-[13rem] rounded-[1rem] border border-slate-200 bg-white p-2 text-left shadow-[0_16px_32px_rgba(15,23,42,0.14)]">
-                            <button
-                              type="button"
-                              className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                              onClick={() => onEdit(coach)}
-                            >
-                              編輯
-                            </button>
-                            <button
-                              type="button"
-                              className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => onResetPassword(coach)}
-                              disabled={deletingCoachId === coach.id || coach.id === currentCoachId}
-                              title={coach.id === currentCoachId ? '基於安全考量，不支援重設正在登入中的自己' : undefined}
-                            >
-                              重設暫時密碼
-                            </button>
-                            {coach.is_head_coach ? (
-                              <button
-                                type="button"
-                                className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                onClick={() => onDemote(coach)}
-                                disabled={deletingCoachId === coach.id || headCoachCount <= 1}
-                                title={headCoachCount <= 1 ? '系統至少需要一位總教練' : undefined}
-                              >
-                                降級為一般教練
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                onClick={() => onPromote(coach)}
-                                disabled={deletingCoachId === coach.id}
-                              >
-                                設為總教練
-                              </button>
-                            )}
-                            {!(coach.is_head_coach === true && headCoachCount <= 1) ? (
-                              <button
-                                type="button"
-                                className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                onClick={() => onDeleteRequest(coach)}
-                                disabled={deletingCoachId === coach.id || coach.id === currentCoachId}
-                                title={coach.id === currentCoachId ? '目前不支援刪除正在登入的總教練帳號' : undefined}
-                              >
-                                {deletingCoachId === coach.id ? '刪除中...' : '刪除'}
-                              </button>
-                            ) : null}
-                          </div>
-                        </details>
+                        <CoachActionDropdown
+                          coach={coach}
+                          isOpen={openCoachMenuId === coach.id}
+                          onToggle={() => setOpenCoachMenuId((current) => current === coach.id ? null : coach.id)}
+                          onClose={() => setOpenCoachMenuId(null)}
+                          isLoading={deletingCoachId === coach.id}
+                          canResetPassword={coach.id !== currentCoachId}
+                          canDelete={coach.id !== currentCoachId && !(coach.is_head_coach && headCoachCount <= 1)}
+                          canChangeRole={!coach.is_head_coach || headCoachCount > 1}
+                          onEdit={() => onEdit(coach)}
+                          onResetPassword={() => onResetPassword(coach)}
+                          onChangeRole={() => coach.is_head_coach ? onDemote(coach) : onPromote(coach)}
+                          onDelete={() => onDeleteRequest(coach)}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -860,6 +820,121 @@ function ActionDropdown({
             document.body,
           )
         : null}
+    </div>
+  )
+}
+
+function CoachActionDropdown({
+  coach,
+  isOpen,
+  onToggle,
+  onClose,
+  isLoading,
+  canResetPassword,
+  canDelete,
+  canChangeRole,
+  onEdit,
+  onResetPassword,
+  onChangeRole,
+  onDelete,
+}: {
+  coach: ManagedCoachRecord
+  isOpen: boolean
+  onToggle: () => void
+  onClose: () => void
+  isLoading: boolean
+  canResetPassword: boolean
+  canDelete: boolean
+  canChangeRole: boolean
+  onEdit: () => void
+  onResetPassword: () => void
+  onChangeRole: () => void
+  onDelete: () => void
+}) {
+  const triggerRef = useRef<HTMLDivElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const [menuStyle, setMenuStyle] = useState<{ top: number; left: number } | null>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    function updatePosition() {
+      const rect = triggerRef.current?.getBoundingClientRect()
+      if (!rect) return
+
+      const width = 216
+      const estimatedHeight = 208
+      const gap = 8
+      const left = Math.max(gap, Math.min(rect.right - width, window.innerWidth - width - gap))
+      const top = rect.bottom + gap + estimatedHeight > window.innerHeight - gap
+        ? Math.max(gap, rect.top - estimatedHeight - gap)
+        : rect.bottom + gap
+      setMenuStyle({ top, left })
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node
+      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return
+      onClose()
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose()
+    }
+
+    updatePosition()
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [isOpen, onClose])
+
+  function run(action: () => void) {
+    onClose()
+    action()
+  }
+
+  return (
+    <div ref={triggerRef} className="inline-flex">
+      <button
+        type="button"
+        className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-lg font-bold leading-none text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+        onClick={onToggle}
+        aria-label={`開啟 ${coachDisplayName(coach)} 的操作選單`}
+        aria-expanded={isOpen}
+      >
+        ⋯
+      </button>
+
+      {isOpen && menuStyle ? createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[90] w-[13.5rem] rounded-[1rem] border border-slate-200 bg-white p-2 text-left shadow-[0_16px_32px_rgba(15,23,42,0.14)]"
+          style={menuStyle}
+          role="menu"
+          aria-label={`${coachDisplayName(coach)} 的操作`}
+        >
+          <button type="button" role="menuitem" className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50" onClick={() => run(onEdit)}>
+            編輯資料
+          </button>
+          <button type="button" role="menuitem" className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => run(onResetPassword)} disabled={isLoading || !canResetPassword}>
+            重設暫時密碼
+          </button>
+          <button type="button" role="menuitem" className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => run(onChangeRole)} disabled={isLoading || !canChangeRole}>
+            {coach.is_head_coach ? '降級為一般教練' : '設為總教練'}
+          </button>
+          <button type="button" role="menuitem" className="flex h-11 w-full items-center rounded-[0.85rem] px-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => run(onDelete)} disabled={isLoading || !canDelete}>
+            {isLoading ? '刪除中…' : '刪除教練'}
+          </button>
+        </div>,
+        document.body,
+      ) : null}
     </div>
   )
 }

@@ -132,8 +132,8 @@ export function PasswordUpdateForm({
             />
           </div>
 
-          {error ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
-          {success ? <p className="rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</p> : null}
+          {error ? <p role="alert" aria-live="polite" className="lab-notice">{error}</p> : null}
+          {success ? <p aria-live="polite" className="lab-notice">{success}</p> : null}
 
           <button type="submit" disabled={isSubmitting} className="lab-btn-primary w-full disabled:opacity-60">
             {isSubmitting ? '更新中...' : '更新密碼'}

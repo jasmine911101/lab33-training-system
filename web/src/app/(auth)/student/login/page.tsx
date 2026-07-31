@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 
 import { LoginForm } from '@/components/auth/login-form'
+import { BrandLogo } from '@/components/layout/brand-logo'
 import { getOAuthErrorMessage } from '@/lib/auth/oauth-errors'
 import { getAppContextForUser } from '@/lib/auth/roles'
 import { getAuthenticatedUser } from '@/lib/auth/session'
@@ -28,16 +29,13 @@ export default async function StudentLoginPage({
     : resolvedSearchParams.oauth_message
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#efe7db_0%,#fbfaf7_100%)] px-4 py-10 text-stone-900 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-stone-500">Student Portal</p>
-          <h1 className="mt-4 text-4xl font-black tracking-tight">學員端登入</h1>
-          <p className="mt-4 max-w-xl text-sm leading-7 text-stone-600 sm:text-base">
-            登入後只會驗證 `public.athletes` 的學員身份；同一個人也可以同時擁有教練身份。
-          </p>
+    <main id="main-content" className="lab-page px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
+      <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:gap-8">
+        <section className="lab-card p-7 sm:p-10">
+          <BrandLogo className="w-52" priority />
+          <h1 className="mt-7 text-balance font-display text-5xl font-bold leading-[0.9] text-slate-950">學員端登入</h1>
         </section>
-        <section className="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-sm">
+        <section className="lab-card p-5 sm:p-6">
           <LoginForm
             mode="student"
             initialError={oauthMessageParam ?? getOAuthErrorMessage(oauthErrorParam) ?? null}
