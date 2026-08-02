@@ -16,7 +16,6 @@ export default async function HomePage() {
           <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
             <div className="space-y-5">
               <BrandLogo className="w-52 sm:w-64" priority />
-              <h1 className="max-w-3xl text-balance font-display text-5xl font-bold leading-[0.9] tracking-tight text-slate-950 sm:text-6xl">讓每一次訓練，都更有方向。</h1>
               <div className="flex flex-wrap gap-3">
                 {user ? (
                   <Link href={signedInHref} className="lab-btn-primary">
