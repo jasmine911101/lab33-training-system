@@ -861,14 +861,15 @@ export function StudentCalendarPreview({ summary, href }: StudentCalendarPreview
   const currentTrainingDay = nextAssignment?.day_num ? `Day ${nextAssignment.day_num}` : '尚未設定'
 
   return (
-    <article className="lab-card p-6 sm:p-7">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <article className="lab-card overflow-hidden p-7 sm:p-8">
+      <div className="lab-section-heading lab-section-heading-flush flex-wrap items-end justify-between gap-3">
         <div>
           <p className="lab-eyebrow">Calendar Preview</p>
           <h2 className="lab-section-title mt-3">本月課表預覽</h2>
-          <p className="lab-copy mt-3">首頁只保留本月摘要；需要完整查看課表、事件與回報時，再進入完整行事曆。</p>
         </div>
       </div>
+
+      <p className="lab-copy mt-4 px-1">首頁只保留本月摘要；需要完整查看課表、事件與回報時，再進入完整行事曆。</p>
 
       <div className="mt-6 space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1047,15 +1048,19 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
 
   return (
     <div className="space-y-6">
-      <article className="lab-card p-6 sm:p-7">
-        <p className="lab-eyebrow">Calendar Planner</p>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <article className="lab-card overflow-hidden p-7 sm:p-8">
+        <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="lab-section-title">我的完整行事曆</h2>
-            <p className="lab-copy mt-3">用和教練端一致的月曆方式查看課表與一般事件，日期內容過多時可打開當日摘要框。</p>
+            <p className="lab-eyebrow">Calendar Planner</p>
+            <h2 className="lab-section-title mt-3">我的完整行事曆</h2>
           </div>
-          <span className="lab-badge-info">已選日期：{selectedDate}</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="lab-badge bg-white/90 text-slate-900">已選日期：{selectedDate}</span>
+            <Link href="/student" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm">返回 Dashboard</Link>
+          </div>
         </div>
+
+        <p className="lab-copy mt-5 px-1">用和教練端一致的月曆方式查看課表與一般事件，日期內容過多時可打開當日摘要框。</p>
 
         <div className="mt-6">
           <CalendarMonthGrid

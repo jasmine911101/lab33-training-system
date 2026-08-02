@@ -35,6 +35,7 @@ export default async function SportBlocksPage({ params }: { params: Promise<{ sp
       userEmail={context.user.email ?? ''}
       title={sport ? `${sport.name} 板塊分類` : '板塊分類'}
       description={failure ? '專項分類頁面目前無法載入。' : '在這一層管理某個專項底下的年齡分級。'}
+      hideHeaderCard
     >
       {failure ? (
         <BlockTaxonomyErrorState title={failure.title} description={failure.description} />
@@ -42,7 +43,6 @@ export default async function SportBlocksPage({ params }: { params: Promise<{ sp
         <BlockTaxonomyBrowser
           eyebrow="Sport"
           title={sport.name}
-          description="點進某個年齡分級後，就能看到對應的訓練分類資料夾。"
           breadcrumbs={[
             { label: '板塊管理', href: '/coach/blocks' },
             { label: sport.name },

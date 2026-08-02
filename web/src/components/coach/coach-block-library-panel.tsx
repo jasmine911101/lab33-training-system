@@ -584,12 +584,11 @@ export function CoachBlockLibraryPanel({ initialBlocks, title = '板塊內容', 
   }
 
   return (
-    <article className="lab-card p-6 sm:p-7">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+    <article className="lab-card overflow-hidden p-7 sm:p-8">
+      <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <p className="lab-eyebrow">Block Library</p>
-          <h2 className="lab-section-title mt-3">{title}</h2>
-          <p className="lab-copy mt-3">{description}</p>
+          <h2 className="lab-section-title">{title}</h2>
+          <p className="sr-only">{description}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {badgeLabel ? <span className="lab-badge bg-orange-100 text-orange-700">{badgeLabel}</span> : null}

@@ -35,21 +35,15 @@ export function StudentDashboardHeader({
 
   return (
     <>
-      <section className="lab-card overflow-hidden px-6 py-6 sm:px-7 sm:py-7">
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start xl:gap-6">
+      <section className="lab-card overflow-hidden p-7 sm:p-8">
+        <div className="flex flex-col gap-4">
+          <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 xl:flex-row xl:items-start xl:justify-between xl:gap-6">
             <div className="min-w-0 max-w-3xl">
-              <p className="lab-eyebrow">Logged In Experience</p>
-              <h2 className="mt-3 font-display text-4xl leading-none text-slate-900 sm:text-5xl">Student Dashboard</h2>
-              <p className="lab-copy mt-3">以行事曆查看自己的課表與一般事件，並直接回報實際訓練狀況。</p>
-
-              <div className="mt-5 flex flex-wrap gap-3">
-                <SummaryStat label="Role" value="學員" />
-                <SummaryStat label="Sport" value={sport ?? '-'} />
-              </div>
+              <p className="lab-eyebrow">Student Dashboard</p>
+              <h2 className="lab-section-title mt-3">我的訓練</h2>
             </div>
 
-            <div className="flex flex-wrap justify-start gap-3 xl:justify-self-end xl:self-start">
+            <div className="flex flex-wrap justify-start gap-3 xl:justify-end">
               <button
                 type="button"
                 className="lab-btn-secondary !min-h-11 min-w-[7.5rem] border-slate-200 bg-slate-50 px-5 py-2.5 text-sm font-bold shadow-none"
@@ -69,10 +63,11 @@ export function StudentDashboardHeader({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={mustChangePassword ? 'lab-badge-warning' : 'lab-badge-info'}>{mustChangePassword ? '需更新密碼' : '可正常登入'}</span>
-            <span className="lab-badge bg-slate-100 text-slate-600">{userEmail ?? '未登入'}</span>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <span className={mustChangePassword ? 'lab-badge-warning' : 'lab-badge-info'}>{mustChangePassword ? '需更新密碼' : '學員'}</span>
+            <SummaryStat label="Sport" value={sport ?? '-'} />
           </div>
+
         </div>
       </section>
 

@@ -55,9 +55,8 @@ export default async function TrainingCategoryBlocksPage({
         <BlockTaxonomyErrorState title={failure.title} description={failure.description} />
       ) : sport && ageGroup && trainingCategory && snapshot ? (
         <div className="space-y-6">
-          <article className="lab-card overflow-hidden p-6 sm:p-7">
-            <div className="flex flex-col gap-5 sm:gap-6">
-              <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+          <div className="flex flex-col gap-3 px-1 sm:flex-row sm:items-center sm:justify-between">
+            <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-500" aria-label="板塊路徑">
                 <Link href="/coach/blocks" className="hover:text-slate-900">板塊管理</Link>
                 <span>/</span>
                 <Link href={`/coach/blocks/sport/${sport.id}`} className="hover:text-slate-900">{sport.name}</Link>
@@ -65,29 +64,12 @@ export default async function TrainingCategoryBlocksPage({
                 <Link href={`/coach/blocks/sport/${sport.id}/age/${ageGroup.id}`} className="hover:text-slate-900">{ageGroup.name}</Link>
                 <span>/</span>
                 <span className="font-semibold text-slate-900">{trainingCategory.name}</span>
-              </nav>
+            </nav>
+            <Link href={`/coach/blocks/sport/${sport.id}/age/${ageGroup.id}`} className="lab-btn-secondary !min-h-10 w-fit px-4 py-2 text-sm">
+              ← 返回訓練分類
+            </Link>
+          </div>
 
-              <Link href={`/coach/blocks/sport/${sport.id}/age/${ageGroup.id}`} className="lab-btn-secondary !min-h-10 w-fit px-4 py-2 text-sm">
-                ← 返回訓練分類
-              </Link>
-
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div className="max-w-3xl">
-                  <h1 className="lab-section-title">{trainingCategory.name} 板塊</h1>
-                  <p className="lab-copy mt-3">
-                    目前顯示 {sport.name} / {ageGroup.name} / {trainingCategory.name} 底下的板塊。Excel 匯入與手動建立都會自動套用目前分類。
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                  <span className={context.coachProfile?.is_head_coach ? 'lab-badge bg-violet-100 text-violet-700' : 'lab-badge-primary'}>
-                    {context.coachProfile?.is_head_coach ? '總教練' : '教練'}
-                  </span>
-                  <span className="lab-badge bg-slate-100 text-slate-600">{context.user.email ?? ''}</span>
-                </div>
-              </div>
-            </div>
-          </article>
           <CoachCategoryBlockImport
             trainingCategoryId={trainingCategory.id}
             categoryName={trainingCategory.name}

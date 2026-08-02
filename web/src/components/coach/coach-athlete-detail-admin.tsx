@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 import { coachDisplayName, type CoachDirectoryEntry, type ManagedAthleteRecord } from '@/lib/types/coach-management'
@@ -56,19 +57,24 @@ function AssignmentEditor({
   }
 
   return (
-    <div className="space-y-3 rounded-[1.25rem] border border-slate-200 bg-white p-5">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-4 text-left"
-        onClick={() => setIsOpen((current) => !current)}
-        aria-expanded={isOpen}
-      >
-        <p className="text-sm font-semibold text-slate-900">指派教練</p>
-        <span className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm">{isOpen ? '收起' : '展開'}</span>
-      </button>
+    <div className="w-full">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
+          onClick={() => setIsOpen((current) => !current)}
+          aria-expanded={isOpen}
+        >
+          {isOpen ? '收起指派' : '指派教練'}
+        </button>
+      </div>
 
       {isOpen ? (
-        <>
+        <div className="mt-3 space-y-4 rounded-[1.25rem] border border-slate-200 bg-slate-50 p-4 sm:p-5">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">選擇負責教練</p>
+            <p className="mt-1 text-sm text-slate-600">變更指派不會影響既有課表、板塊或回報資料。</p>
+          </div>
           <div className="grid gap-2 sm:grid-cols-2">
             <label className="flex items-start gap-3 rounded-2xl border border-slate-200 px-3 py-3 text-sm text-slate-700">
               <input
@@ -102,11 +108,11 @@ function AssignmentEditor({
               </>
             )}
           </div>
-          {error ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+          {error ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700" aria-live="polite">{error}</p> : null}
           <button type="button" className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" disabled={isSaving} onClick={handleSave}>
-            {isSaving ? '儲存中...' : '儲存指派'}
+            {isSaving ? '儲存中…' : '儲存指派'}
           </button>
-        </>
+        </div>
       ) : null}
     </div>
   )
@@ -172,47 +178,70 @@ export function CoachAthleteDetailAdmin({
 
   return (
     <section className="space-y-6">
-      <article className="lab-card p-6 sm:p-7">
-        <button
-          type="button"
-          className="flex w-full items-start justify-between gap-4 rounded-[1.25rem] text-left transition hover:bg-slate-50/80"
-          onClick={() => setIsProfileOpen((current) => !current)}
-          aria-expanded={isProfileOpen}
-        >
-          <div className="min-w-0 space-y-3">
-            <div>
-              <p className="lab-eyebrow">Athlete Profile</p>
-              <h3 className="mt-3 text-2xl font-bold text-slate-900">{athlete.name ?? '未命名學員'}</h3>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-              <span className="truncate font-medium text-slate-700">{athlete.email ?? '-'}</span>
-              {!athlete.user_id ? (
-                <span className="lab-badge-info">等待 Google 綁定</span>
-              ) : athlete.must_change_password ? (
-                <span className="lab-badge-warning">需更新密碼</span>
-              ) : (
-                <span className="lab-badge-success">可正常登入</span>
-              )}
-            </div>
+      <article className="lab-card overflow-hidden p-7 sm:p-8">
+        <div className="lab-section-heading lab-section-heading-flush flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="lab-eyebrow">Athlete Profile</p>
+            <h2 className="lab-section-title mt-3">{athlete.name ?? '未命名學員'}</h2>
           </div>
-          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-lg text-slate-500 transition">
-            {isProfileOpen ? '⌃' : '⌄'}
-          </span>
-        </button>
+          <Link href="/coach" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm">
+            返回學員列表
+          </Link>
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+            <span className="truncate font-medium text-slate-700">{athlete.email ?? '-'}</span>
+            {!athlete.user_id ? (
+              <span className="lab-badge-info">等待 Google 綁定</span>
+            ) : athlete.must_change_password ? (
+              <span className="lab-badge-warning">需更新密碼</span>
+            ) : (
+              <span className="lab-badge-success">可正常登入</span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="lab-btn-ghost !min-h-10 px-4 py-2 text-sm"
+              onClick={() => setIsProfileOpen((current) => !current)}
+              aria-expanded={isProfileOpen}
+            >
+              {isProfileOpen ? '收起資料' : '查看資料'}
+            </button>
+          </div>
+        </div>
+
+        {isHeadCoach ? (
+          <div className="mt-4">
+            <AssignmentEditor
+              key={`${athlete.id}-${athlete.assignedCoachIds.join(',')}`}
+              athlete={athlete}
+              assignableCoaches={assignableCoaches}
+              onSaved={(updatedAthlete, message) => {
+                setAthlete(updatedAthlete)
+                setFeedback(message ?? '已更新教練指派。')
+                setError(null)
+              }}
+            />
+          </div>
+        ) : null}
+
+        {feedback ? <p className="mt-4 rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700" aria-live="polite">{feedback}</p> : null}
+        {error ? <p className="mt-4 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700" aria-live="polite">{error}</p> : null}
 
         {isProfileOpen ? (
           <>
             <dl className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">姓名</dt><dd className="mt-1 font-semibold text-slate-900">{athlete.name ?? '-'}</dd></div>
-              <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">Email</dt><dd className="mt-1 font-semibold text-slate-900 break-all">{athlete.email ?? '-'}</dd></div>
+              <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">Email</dt><dd className="mt-1 break-all font-semibold text-slate-900">{athlete.email ?? '-'}</dd></div>
               <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">運動項目</dt><dd className="mt-1 font-semibold text-slate-900">{athlete.sport ?? '-'}</dd></div>
               <div className="rounded-[1rem] bg-slate-50 px-4 py-3"><dt className="font-medium text-slate-500">程度</dt><dd className="mt-1 font-semibold text-slate-900">{athlete.level ?? '-'}</dd></div>
             </dl>
-
             <div className="mt-6 flex flex-wrap gap-3">
               {athlete.user_id ? (
                 <button type="button" className="lab-btn-secondary" disabled={isResetting} onClick={() => void handleResetPassword()}>
-                  {isResetting ? '重設中...' : '重設臨時密碼'}
+                  {isResetting ? '重設中…' : '重設臨時密碼'}
                 </button>
               ) : null}
               <button type="button" className="lab-btn-secondary" onClick={() => setConfirmDelete((current) => !current)}>
@@ -226,8 +255,6 @@ export function CoachAthleteDetailAdmin({
               </p>
             ) : null}
 
-            {feedback ? <p className="mt-4 rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{feedback}</p> : null}
-            {error ? <p className="mt-4 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
             {tempPassword ? (
               <div className="mt-4 rounded-[1.25rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
                 <p className="font-semibold">請把這組臨時密碼交給學員</p>
@@ -242,7 +269,7 @@ export function CoachAthleteDetailAdmin({
                 <p className="mt-2">刪除後會移除學員資料，並清掉已安排的課表板塊。</p>
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button type="button" className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" disabled={isDeleting} onClick={() => void handleDelete()}>
-                    {isDeleting ? '刪除中...' : '確認刪除'}
+                    {isDeleting ? '刪除中…' : '確認刪除'}
                   </button>
                   <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setConfirmDelete(false)}>
                     取消
@@ -253,19 +280,6 @@ export function CoachAthleteDetailAdmin({
           </>
         ) : null}
       </article>
-
-      {isHeadCoach ? (
-        <AssignmentEditor
-          key={`${athlete.id}-${athlete.assignedCoachIds.join(',')}`}
-          athlete={athlete}
-          assignableCoaches={assignableCoaches}
-          onSaved={(updatedAthlete, message) => {
-            setAthlete(updatedAthlete)
-            setFeedback(message ?? '已更新教練指派。')
-            setError(null)
-          }}
-        />
-      ) : null}
     </section>
   )
 }

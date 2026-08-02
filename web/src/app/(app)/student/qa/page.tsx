@@ -12,5 +12,5 @@ export default async function StudentQaPage() {
   } catch {
     setupError = true
   }
-  return <AppShell title="QA 庫" description="查看常見問題與教練提供的影片解答。" role="student" userEmail={context.user.email} roleLabel="學員" currentPath="/student/qa">{setupError ? <section className="lab-card p-6 sm:p-7"><p className="lab-notice">QA 庫正在設定中，請稍後再回來查看。</p></section> : <StudentQaLibrary entries={entries} />}</AppShell>
+  return <AppShell title="Q&A 庫" description="查看常見問題與教練提供的影片解答。" role="student" userEmail={context.user.email} roleLabel="學員" currentPath="/student/qa" hideHeaderCard>{setupError ? <section className="lab-card p-6 sm:p-7"><p className="lab-notice">Q&A 庫正在設定中，請稍後再回來查看。</p></section> : <StudentQaLibrary entries={entries} />}</AppShell>
 }

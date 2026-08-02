@@ -38,6 +38,7 @@ export default async function AgeGroupBlocksPage({ params }: { params: Promise<{
       userEmail={context.user.email ?? ''}
       title={ageGroup ? `${ageGroup.name} 訓練分類` : '訓練分類'}
       description={failure ? '年齡分級頁面目前無法載入。' : '這一層管理某個年齡分級底下的訓練分類。'}
+      hideHeaderCard
     >
       {failure ? (
         <BlockTaxonomyErrorState title={failure.title} description={failure.description} />
@@ -45,7 +46,6 @@ export default async function AgeGroupBlocksPage({ params }: { params: Promise<{
         <BlockTaxonomyBrowser
           eyebrow="Training Category"
           title={`${sport.name} / ${ageGroup.name}`}
-          description="點進某個訓練分類後，就會看到該分類底下的板塊清單。"
           breadcrumbs={[
             { label: '板塊管理', href: '/coach/blocks' },
             { label: sport.name, href: `/coach/blocks/sport/${sport.id}` },

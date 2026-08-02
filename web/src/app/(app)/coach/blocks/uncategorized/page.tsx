@@ -34,7 +34,6 @@ export default async function UncategorizedBlocksPage() {
           <BlockTaxonomyBrowser
             eyebrow="Uncategorized"
             title="未分類板塊"
-            description="這一區保留所有 `training_category_id is null` 的板塊，方便之後再整理進分類資料夾。"
             breadcrumbs={[
               { label: '板塊管理', href: '/coach/blocks' },
               { label: '未分類' },

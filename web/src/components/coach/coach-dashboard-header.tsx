@@ -9,7 +9,6 @@ type CoachDashboardHeaderProps = {
   athleteCount: number
   userEmail?: string | null
   coachName?: string | null
-  createAthleteSlot?: React.ReactNode
   allowPasswordManagement?: boolean
 }
 
@@ -27,7 +26,6 @@ export function CoachDashboardHeader({
   athleteCount,
   userEmail,
   coachName,
-  createAthleteSlot,
   allowPasswordManagement = true,
 }: CoachDashboardHeaderProps) {
   const [isPasswordOpen, setIsPasswordOpen] = useState(false)
@@ -35,16 +33,15 @@ export function CoachDashboardHeader({
 
   return (
     <>
-      <section className="lab-card overflow-hidden px-6 py-6 sm:px-7 sm:py-7">
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start xl:gap-6">
+      <section className="lab-card overflow-hidden px-7 py-6 sm:px-8 sm:py-7">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start xl:gap-6">
             <div className="min-w-0 max-w-3xl">
-              <p className="lab-eyebrow">Logged In Experience</p>
-              <h2 className="mt-3 font-display text-4xl leading-none text-slate-900 sm:text-5xl">Coach Dashboard</h2>
+              <h2 className="lab-page-title">教練總覽</h2>
 
-              <div className="mt-5 flex flex-wrap gap-3">
-                <SummaryStat label="Role" value={roleLabel} />
-                <SummaryStat label="Athletes" value={athleteCount} />
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <span className={roleLabel === '總教練' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
+                <SummaryStat label="學員" value={athleteCount} />
               </div>
             </div>
 
@@ -67,17 +64,6 @@ export function CoachDashboardHeader({
               ) : null}
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={roleLabel === '總教練' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
-            <span className="lab-badge bg-slate-100 text-slate-600">{userEmail ?? '未登入'}</span>
-          </div>
-
-          {createAthleteSlot ? (
-            <div className="w-full">
-              {createAthleteSlot}
-            </div>
-          ) : null}
         </div>
       </section>
 

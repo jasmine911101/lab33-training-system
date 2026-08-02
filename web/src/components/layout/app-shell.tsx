@@ -27,14 +27,14 @@ function getNavItems(role: Exclude<AppRole, 'unknown'>): NavItem[] {
     return [
       { href: '/coach', label: '學員管理', shortLabel: '學員', icon: 'A' },
       { href: '/coach/blocks', label: '板塊管理', shortLabel: '板塊', icon: 'B' },
-      { href: '/coach/qa', label: 'QA 庫', shortLabel: 'QA', icon: 'Q' },
+      { href: '/coach/qa', label: 'Q&A 庫', shortLabel: 'Q&A', icon: 'Q' },
       { href: '/', label: '網站首頁', shortLabel: '首頁', icon: 'L' },
     ]
   }
 
   return [
     { href: '/student', label: '我的課表', shortLabel: '課表', icon: 'T' },
-    { href: '/student/qa', label: 'QA 庫', shortLabel: 'QA', icon: 'Q' },
+    { href: '/student/qa', label: 'Q&A 庫', shortLabel: 'Q&A', icon: 'Q' },
     { href: '/', label: '網站首頁', shortLabel: '首頁', icon: 'L' },
   ]
 }
@@ -78,9 +78,14 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
     <div className="lab-page">
       <div className="lab-app-shell">
         <aside className="lab-shell-sidebar">
-          <div className="lab-shell-panel">
-            <Link href="/" className="block w-fit" aria-label="LAB33 首頁"><BrandLogo priority /></Link>
-            <h1 className="mt-4 text-3xl font-bold leading-none text-slate-950">{role === 'coach' ? '教練端' : '學員端'}</h1>
+          <div className="lab-shell-panel lab-shell-brand-panel">
+            <Link href="/" className="lab-shell-brand-link" aria-label="LAB33 首頁">
+              <BrandLogo className="w-48" priority />
+            </Link>
+            <div className="lab-shell-brand-meta">
+              <span className="lab-shell-brand-kicker">LAB33 Training System</span>
+              <p className="lab-shell-role-label">{role === 'coach' ? '教練端' : '學員端'}</p>
+            </div>
           </div>
 
           <div className="lab-shell-panel">
@@ -101,15 +106,15 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
         <div className="min-w-0">
           <header className="lab-mobile-topbar">
             <Link href="/" aria-label="LAB33 首頁"><BrandLogo className="w-24" priority /></Link>
-            <h1 className="font-display text-2xl leading-none text-slate-900">{title}</h1>
+            <h1 className="lab-page-title !rounded-xl !px-3 !py-2 text-2xl">{title}</h1>
             <span className={role === 'coach' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
           </header>
 
           {hideHeaderCard ? null : (
-            <div className="lab-card overflow-hidden p-6 sm:p-7">
+            <div className="lab-card overflow-hidden p-7 sm:p-8">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div className="max-w-3xl">
-                  <h2 className="lab-section-title">{title}</h2>
+                  <h2 className="lab-page-title">{title}</h2>
                   <p className="lab-copy mt-2">{description}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">

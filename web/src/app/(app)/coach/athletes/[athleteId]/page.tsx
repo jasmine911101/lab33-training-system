@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { CoachAthleteDetailAdmin } from '@/components/coach/coach-athlete-detail-admin'
@@ -24,18 +23,7 @@ export default async function CoachAthleteDetailPage({ params }: { params: Promi
   const { athlete, managedAthlete, assignableCoaches, schedule, blocks, taxonomy } = pageData
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="lab-eyebrow">Coach Schedule Manager</p>
-          <h2 className="lab-section-title mt-2">{athlete.name ?? '未命名學員'}</h2>
-          <p className="lab-copy mt-3">這一頁負責教練端課表安排、一般事件與月曆選日流程；板塊模板本身則已搬到獨立的板塊管理頁面。</p>
-        </div>
-        <Link href="/coach" className="lab-btn-secondary">
-          返回學員列表
-        </Link>
-      </div>
-
+    <div className="space-y-6 px-4 sm:px-6 xl:px-8">
       <CoachAthleteDetailAdmin
         initialAthlete={managedAthlete}
         assignableCoaches={assignableCoaches}

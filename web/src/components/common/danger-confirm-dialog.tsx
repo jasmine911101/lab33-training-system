@@ -71,7 +71,7 @@ export function DangerConfirmDialog({
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">
             <p className="lab-eyebrow text-slate-600">Confirmation Required</p>
-            <h2 id="danger-confirm-title" className="text-2xl font-bold text-slate-950">{title}</h2>
+            <h2 id="danger-confirm-title" className="lab-section-title !text-2xl">{title}</h2>
             <p className="text-sm leading-7 text-slate-600">{description}</p>
           </div>
           <button

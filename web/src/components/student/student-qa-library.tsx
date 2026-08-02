@@ -16,13 +16,13 @@ export function StudentQaLibrary({ entries }: { entries: QaEntry[] }) {
       try {
         const response = await fetch('/api/student/qa', { cache: 'no-store' })
         const payload = (await response.json().catch(() => null)) as { entries?: QaEntry[]; error?: string } | null
-        if (!response.ok) throw new Error(payload?.error ?? '同步 QA 失敗。')
+        if (!response.ok) throw new Error(payload?.error ?? '同步 Q&A 失敗。')
         if (active && payload?.entries) {
           setSyncedEntries(payload.entries)
           setSyncError(null)
         }
       } catch (error) {
-        if (active) setSyncError(error instanceof Error ? error.message : '同步 QA 失敗。')
+        if (active) setSyncError(error instanceof Error ? error.message : '同步 Q&A 失敗。')
       }
     }
 
@@ -47,20 +47,22 @@ export function StudentQaLibrary({ entries }: { entries: QaEntry[] }) {
   }, [syncedEntries, query])
 
   return (
-    <section className="lab-card overflow-hidden p-6 sm:p-7">
-      <div className="rounded-[1.35rem] bg-slate-950 px-5 py-6 text-white sm:px-7 sm:py-8">
-        <p className="text-xs font-semibold tracking-[0.22em] text-slate-300">VIDEO ANSWERS</p>
-        <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">找到你的答案</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300">以編號或關鍵字搜尋，選擇題目後即可開啟教練準備的影片解答。</p>
+    <section className="lab-card overflow-hidden p-7 sm:p-8">
+      <div className="lab-section-heading lab-section-heading-flush flex-col gap-4">
+        <div>
+          <p className="lab-eyebrow">Video Answers</p>
+          <h1 className="lab-section-title mt-3">Q&A 庫</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300">以編號或關鍵字搜尋，選擇題目後即可開啟教練準備的影片解答。</p>
+        </div>
         <label className="mt-6 block max-w-2xl" htmlFor="student-qa-search">
-          <span className="sr-only">搜尋 QA 編號或問題</span>
+          <span className="sr-only">搜尋 Q&A 編號或問題</span>
           <input id="student-qa-search" name="qa-search" autoComplete="off" className="lab-input bg-white text-slate-900" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="輸入 1、2、3… 或問題關鍵字…" />
         </label>
       </div>
 
       <div className="mt-6 flex items-center justify-between gap-3">
         <p className="text-sm font-semibold text-slate-800">{query ? `找到 ${matches.length} 筆結果` : `共 ${syncedEntries.length} 個問題`}</p>
-        <span className="lab-badge-primary">QA 庫</span>
+        <span className="lab-badge-primary">Q&A 庫</span>
       </div>
 
       <ol className="mt-4 space-y-3">
@@ -77,8 +79,8 @@ export function StudentQaLibrary({ entries }: { entries: QaEntry[] }) {
         ))}
       </ol>
 
-      {matches.length === 0 && syncedEntries.length > 0 ? <div className="lab-card-muted mt-4 px-5 py-7 text-sm text-slate-700">找不到符合的 QA。試試輸入編號或其他問題關鍵字。</div> : null}
-      {syncedEntries.length === 0 ? <div className="lab-card-muted mt-4 px-5 py-7 text-sm text-slate-700">目前尚無 QA，請稍後再回來查看。</div> : null}
+      {matches.length === 0 && syncedEntries.length > 0 ? <div className="lab-card-muted mt-4 px-5 py-7 text-sm text-slate-700">找不到符合的 Q&A。試試輸入編號或其他問題關鍵字。</div> : null}
+      {syncedEntries.length === 0 ? <div className="lab-card-muted mt-4 px-5 py-7 text-sm text-slate-700">目前尚無 Q&A，請稍後再回來查看。</div> : null}
       {syncError ? <p className="lab-notice mt-4" role="status" aria-live="polite">目前無法自動同步，系統會稍後再試。</p> : null}
     </section>
   )

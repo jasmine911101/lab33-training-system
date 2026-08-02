@@ -200,17 +200,17 @@ export function CoachCategoryBlockManual({ trainingCategoryId, categoryName }: P
   }
 
   return (
-    <article className="lab-card p-6 sm:p-7">
+    <article className="lab-card overflow-hidden p-7 sm:p-8">
       <button
         type="button"
-        className="flex w-full items-center justify-between gap-4 text-left"
+        className="lab-section-heading lab-section-heading-flush flex w-full items-center justify-between gap-4 text-left"
         onClick={() => setIsOpen((current) => !current)}
         aria-expanded={isOpen}
+        aria-label={`${categoryName}：直接填寫板塊模板`}
       >
         <div>
           <p className="lab-eyebrow">Manual Template</p>
           <h2 className="lab-section-title mt-3">直接填寫板塊模板</h2>
-          <p className="lab-copy mt-3">目前手動建立的板塊會自動歸到「{categoryName}」這個訓練分類。</p>
         </div>
         <span className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm">{isOpen ? '收起' : '展開'}</span>
       </button>

@@ -107,7 +107,7 @@ function TemporaryCredentialDialog({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="lab-eyebrow">Account Access</p>
-            <h3 className="mt-3 text-2xl font-bold text-slate-900">{state.title}</h3>
+            <h3 className="lab-section-title mt-3 !text-2xl">{state.title}</h3>
           </div>
           <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={onClose}>
             關閉
@@ -311,7 +311,7 @@ function AssignmentDialog({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="lab-eyebrow">Coach Assignment</p>
-            <h3 className="mt-3 text-2xl font-bold text-slate-900">指派教練</h3>
+            <h3 className="lab-section-title mt-3 !text-2xl">指派教練</h3>
             <p className="mt-3 text-sm leading-7 text-slate-600">
               目前正在調整 <span className="font-semibold text-slate-900">{state.athlete.name ?? state.athlete.email ?? '這位學員'}</span> 的教練指派。
             </p>
@@ -406,7 +406,7 @@ function CoachEditorDialog({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="lab-eyebrow">Coach Management</p>
-            <h3 className="mt-3 text-2xl font-bold text-slate-900">{isEditing ? '編輯教練' : '新增教練'}</h3>
+            <h3 className="lab-section-title mt-3 !text-2xl">{isEditing ? '編輯教練' : '新增教練'}</h3>
             <p className="mt-3 text-sm leading-7 text-slate-600">
               {isEditing
                 ? '只會更新 public.coaches 的教練資料，不會自動修改 Google Auth 帳號。'
@@ -485,7 +485,7 @@ function CoachDeleteDialog({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="lab-eyebrow">Delete Coach</p>
-            <h3 className="mt-3 text-2xl font-bold text-slate-900">確認刪除教練</h3>
+            <h3 className="lab-section-title mt-3 !text-2xl">確認刪除教練</h3>
             <p className="mt-3 text-sm leading-7 text-slate-600">
               你即將刪除 <span className="font-semibold text-slate-900">{coach.name ?? coach.email ?? `Coach ${coach.id}`}</span>。
             </p>
@@ -569,12 +569,11 @@ function CoachManagementSection({
   const [openCoachMenuId, setOpenCoachMenuId] = useState<number | null>(null)
 
   return (
-    <article className="lab-card p-6 sm:p-7">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <article className="lab-card overflow-hidden p-7 sm:p-8">
+      <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="lab-eyebrow">Coach Management</p>
           <h2 className="lab-section-title mt-3">教練管理</h2>
-          <p className="mt-3 text-sm leading-7 text-slate-600">只有總教練可以查看教練列表、建立新教練與調整教練資料。</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <button
@@ -956,6 +955,7 @@ function ManagedAthletesSection({
   handleAssignCoach,
   handleResetPassword,
   handleDeleteAthlete,
+  createAthleteSlot,
 }: {
   athletes: ManagedAthleteRecord[]
   isHeadCoach: boolean
@@ -973,6 +973,7 @@ function ManagedAthletesSection({
   handleAssignCoach: (athlete: ManagedAthleteRecord) => void
   handleResetPassword: (athlete: ManagedAthleteRecord) => Promise<void>
   handleDeleteAthlete: (athlete: ManagedAthleteRecord) => Promise<void>
+  createAthleteSlot?: React.ReactNode
 }) {
   const filteredAthletes = useMemo(() => {
     let rows = rankAthletesBySearch(athletes, search)
@@ -990,20 +991,18 @@ function ManagedAthletesSection({
   }, [athletes, currentCoachId, filter, search])
 
   return (
-    <article className="lab-card p-6 sm:p-7">
-      <p className="lab-eyebrow">Managed Athletes</p>
-      <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <article className="lab-card overflow-hidden p-7 sm:p-8">
+      <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="lab-section-title">學員列表</h2>
-          <p className="mt-3 text-sm leading-7 text-slate-600">
-            {isHeadCoach
-              ? '總教練可查看全部學員、快速篩選未指派學員，並直接在列表中調整教練指派。'
-              : '一般教練只會看到 coach_athletes 中已指派給自己的學員，不能查看或操作其他教練的學生。'}
-          </p>
+          <p className="lab-eyebrow">Managed Athletes</p>
+          <h2 className="lab-section-title mt-3">學員列表</h2>
         </div>
-        <span className={isHeadCoach ? 'lab-badge-primary' : 'lab-badge-info'}>
-          {isHeadCoach ? '全部學員可見' : '僅自己管理學員'}
-        </span>
+        <div className="flex flex-wrap items-center gap-3">
+          {createAthleteSlot}
+          <span className={isHeadCoach ? 'lab-badge-primary' : 'lab-badge-info'}>
+            {isHeadCoach ? '全部學員可見' : '僅自己管理學員'}
+          </span>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -1670,6 +1669,25 @@ export function CoachAthleteManager({
         userEmail={userEmail}
         coachName={coachName}
         allowPasswordManagement={allowPasswordManagement}
+      />
+
+      <ManagedAthletesSection
+        athletes={athletes}
+        isHeadCoach={isHeadCoach}
+        currentCoachId={currentCoachId}
+        search={search}
+        setSearch={setSearch}
+        filter={filter}
+        setFilter={setFilter}
+        filterOptions={filterOptions}
+        openActionId={openActionId}
+        setOpenActionId={setOpenActionId}
+        actionLoadingId={actionLoadingId}
+        resetPasswordFeedback={resetPasswordFeedback}
+        resetPasswordError={resetPasswordError}
+        handleAssignCoach={openAssignCoachDialog}
+        handleResetPassword={handleResetPassword}
+        handleDeleteAthlete={handleDeleteAthlete}
         createAthleteSlot={
           <CreateAthleteSection
             isHeadCoach={isHeadCoach}
@@ -1713,25 +1731,6 @@ export function CoachAthleteManager({
           feedbackError={coachDeleteError}
         />
       ) : null}
-
-      <ManagedAthletesSection
-        athletes={athletes}
-        isHeadCoach={isHeadCoach}
-        currentCoachId={currentCoachId}
-        search={search}
-        setSearch={setSearch}
-        filter={filter}
-        setFilter={setFilter}
-        filterOptions={filterOptions}
-        openActionId={openActionId}
-        setOpenActionId={setOpenActionId}
-        actionLoadingId={actionLoadingId}
-        resetPasswordFeedback={resetPasswordFeedback}
-        resetPasswordError={resetPasswordError}
-        handleAssignCoach={openAssignCoachDialog}
-        handleResetPassword={handleResetPassword}
-        handleDeleteAthlete={handleDeleteAthlete}
-      />
 
       {assignmentDialog && isHeadCoach ? (
         <AssignmentDialog

@@ -17,7 +17,6 @@ type Entry = {
 type Props = {
   eyebrow: string
   title: string
-  description: string
   breadcrumbs?: Breadcrumb[]
   entries: Entry[]
   emptyMessage: string
@@ -28,7 +27,6 @@ type Props = {
 export function BlockTaxonomyBrowser({
   eyebrow,
   title,
-  description,
   breadcrumbs = [],
   entries,
   emptyMessage,
@@ -39,9 +37,10 @@ export function BlockTaxonomyBrowser({
 
   return (
     <div className="space-y-6">
-      <article className="lab-card p-6 sm:p-7">
-        {breadcrumbs.length > 0 ? (
-          <nav className="mb-4 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+      {breadcrumbs.length > 0 || parentHref ? (
+        <div className="flex flex-col gap-3 px-1 sm:flex-row sm:items-center sm:justify-between">
+          {breadcrumbs.length > 0 ? (
+          <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-500" aria-label="板塊路徑">
             {breadcrumbs.map((breadcrumb, index) => (
               <div key={`${breadcrumb.label}-${index}`} className="flex items-center gap-2">
                 {index > 0 ? <span>/</span> : null}
@@ -53,33 +52,28 @@ export function BlockTaxonomyBrowser({
               </div>
             ))}
           </nav>
-        ) : null}
+          ) : <span className="lab-eyebrow">{eyebrow}</span>}
 
-        {parentHref ? (
-          <Link href={parentHref} className="lab-btn-secondary !min-h-10 mb-5 px-4 py-2 text-sm">
+          {parentHref ? (
+          <Link href={parentHref} className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm">
             ← 返回上一層
           </Link>
-        ) : null}
-
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="lab-eyebrow">{eyebrow}</p>
-            <h1 className="lab-section-title mt-3">{title}</h1>
-            <p className="lab-copy mt-3 max-w-3xl">{description}</p>
-          </div>
-          {aside ? <div className="lg:max-w-sm lg:min-w-[280px]">{aside}</div> : null}
+          ) : null}
         </div>
-      </article>
+      ) : null}
 
       {createForm ? createForm : null}
 
-      <article className="lab-card p-6 sm:p-7">
-        <div className="flex items-center justify-between gap-3">
+      <article className="lab-card overflow-hidden p-7 sm:p-8">
+        <div className="lab-section-heading lab-section-heading-flush items-center justify-between gap-3">
           <div>
-            <p className="lab-eyebrow">Folders</p>
-            <h2 className="lab-section-title mt-3">分類資料夾</h2>
+            <p className="lab-eyebrow">{eyebrow}</p>
+            <h1 className="lab-section-title mt-3">{title === '板塊分類' ? '專項資料夾' : title}</h1>
           </div>
-          <span className="lab-badge-primary">{entries.length} 個項目</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {aside}
+            <span className="lab-badge-primary">{entries.length} 個項目</span>
+          </div>
         </div>
 
         {entries.length === 0 ? (

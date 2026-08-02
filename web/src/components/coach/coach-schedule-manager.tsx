@@ -1480,7 +1480,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                         ) : null}
                       </div>
 
-                      <div className="relative z-10 mt-3 space-y-2">
+                      <div className={`relative z-10 space-y-2 ${weekMarker ? 'mt-11' : 'mt-3'}`}>
                         {previewItems.map((item) => (
                           <div
                             key={`${cell.date}-${item.kind}-${item.id}`}
@@ -1660,8 +1660,8 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
         </article>
       </section>
 
-      {error ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
-      {message ? <p className="rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</p> : null}
+      {error ? <p className="rounded-[1rem] bg-rose-50 px-5 py-4 text-sm text-rose-700" aria-live="polite">{error}</p> : null}
+      {message ? <p className="rounded-[1rem] bg-emerald-50 px-5 py-4 text-sm text-emerald-700" aria-live="polite">{message}</p> : null}
 
       {isDayModalOpen ? (
         <div
@@ -1709,7 +1709,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
         </div>
       ) : null}
 
-      <section ref={detailSectionRef}>
+      <section ref={detailSectionRef} className="lab-content-section">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="lab-eyebrow">Selected Day</p>

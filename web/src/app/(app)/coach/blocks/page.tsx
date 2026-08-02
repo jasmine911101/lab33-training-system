@@ -27,6 +27,7 @@ export default async function CoachBlocksPage() {
       userEmail={context.user.email ?? ''}
       title="板塊管理"
       description={failure ? '板塊分類頁面目前無法載入。' : '先從專項資料夾往下瀏覽，再進入年齡分級、訓練分類與最終板塊內容。'}
+      hideHeaderCard
     >
       {failure ? (
         <BlockTaxonomyErrorState title={failure.title} description={failure.description} />
@@ -34,7 +35,6 @@ export default async function CoachBlocksPage() {
         <BlockTaxonomyBrowser
           eyebrow="Block Taxonomy"
           title="板塊分類"
-          description="這一層先管理專項。點進專項後再進一步查看年齡分級與訓練分類。"
           entries={[
             ...snapshot.sports.map((sport) => ({
               id: sport.id,
