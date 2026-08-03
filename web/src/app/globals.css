@@ -334,20 +334,11 @@ a {
     transform: scale(0.97);
   }
 
-  .lab-shell-brand-meta {
-    @apply w-full rounded-[1rem] px-4 py-3 text-left;
-    background: linear-gradient(135deg, #eeeeea 0%, #deded8 100%);
-    border: 1px solid #c5c5bf;
-    box-shadow: inset 4px 0 0 #171717;
-  }
-
-  .lab-shell-brand-kicker {
-    @apply block text-[10px] font-bold uppercase tracking-[0.18em];
-    color: #696964;
-  }
-
   .lab-shell-role-label {
-    @apply mt-1 text-xl font-bold leading-none;
+    @apply px-1 text-xl font-bold leading-none;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
     color: #171717;
     font-family: var(--font-display);
     letter-spacing: 0.02em;

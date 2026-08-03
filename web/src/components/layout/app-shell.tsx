@@ -82,10 +82,7 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
             <Link href="/" className="lab-shell-brand-link" aria-label="LAB33 首頁">
               <BrandLogo className="w-48" priority />
             </Link>
-            <div className="lab-shell-brand-meta">
-              <span className="lab-shell-brand-kicker">LAB33 Training System</span>
-              <p className="lab-shell-role-label">{role === 'coach' ? '教練端' : '學員端'}</p>
-            </div>
+            <p className="lab-shell-role-label">{role === 'coach' ? '教練端' : '學員端'}</p>
           </div>
 
           <div className="lab-shell-panel">

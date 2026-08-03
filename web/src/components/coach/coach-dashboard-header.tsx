@@ -33,37 +33,36 @@ export function CoachDashboardHeader({
 
   return (
     <>
-      <section className="lab-card overflow-hidden px-7 py-6 sm:px-8 sm:py-7">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start xl:gap-6">
-            <div className="min-w-0 max-w-3xl">
-              <h2 className="lab-page-title">教練總覽</h2>
+      <section className="lab-card overflow-hidden p-7 sm:p-8">
+        <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="lab-eyebrow">Coach Dashboard</p>
+            <h2 className="lab-section-title mt-3">教練總覽</h2>
+          </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <span className={roleLabel === '總教練' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
-                <SummaryStat label="學員" value={athleteCount} />
-              </div>
-            </div>
-
-            <div className="flex flex-wrap justify-start gap-3 xl:justify-self-end xl:self-start">
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm font-bold"
+              onClick={() => setIsProfileOpen(true)}
+            >
+              教練資料
+            </button>
+            {allowPasswordManagement ? (
               <button
                 type="button"
-                className="lab-btn-secondary !min-h-11 min-w-[7.5rem] border-slate-200 bg-slate-50 px-5 py-2.5 text-sm font-bold shadow-none"
-                onClick={() => setIsProfileOpen(true)}
+                className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm font-bold"
+                onClick={() => setIsPasswordOpen(true)}
               >
-                教練資料
+                修改密碼
               </button>
-              {allowPasswordManagement ? (
-                <button
-                  type="button"
-                  className="lab-btn-secondary !min-h-11 min-w-[8.5rem] border-slate-200 bg-slate-50 px-5 py-2.5 text-sm font-bold shadow-none"
-                  onClick={() => setIsPasswordOpen(true)}
-                >
-                  修改密碼
-                </button>
-              ) : null}
-            </div>
+            ) : null}
           </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <span className={roleLabel === '總教練' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
+          <SummaryStat label="學員" value={athleteCount} />
         </div>
       </section>
 
