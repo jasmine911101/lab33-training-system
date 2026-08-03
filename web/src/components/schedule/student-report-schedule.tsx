@@ -89,6 +89,10 @@ function resolveWeekMarkers(date: string, markers: WeekMarker[]) {
   return markers.filter((marker) => rangeIncludes(date, marker.startDate, marker.endDate))
 }
 
+function getWeekMarkerLaneKey(marker: WeekMarker) {
+  return [marker.id, marker.startDate, marker.endDate, marker.weekNum, marker.note, marker.colorKey].join('|')
+}
+
 function getWeekMarkerLanes(markers: WeekMarker[]) {
   const laneEndDates: string[] = []
   const lanes = new Map<string, number>()
@@ -97,7 +101,7 @@ function getWeekMarkerLanes(markers: WeekMarker[]) {
     let lane = laneEndDates.findIndex((endDate) => endDate < marker.startDate)
     if (lane === -1) lane = laneEndDates.length
     laneEndDates[lane] = marker.endDate
-    lanes.set(marker.id, lane)
+    lanes.set(getWeekMarkerLaneKey(marker), lane)
   }
 
   return lanes
@@ -830,7 +834,7 @@ function CalendarMonthGrid({
               const cellWeekMarkers = cell.weekMarkers
               const previousCell = cellIndex % 7 === 0 ? null : monthDays[cellIndex - 1]
               const nextCell = cellIndex % 7 === 6 ? null : monthDays[cellIndex + 1]
-              const highestCellLane = Math.max(-1, ...cellWeekMarkers.map((marker) => weekMarkerLanes.get(marker.id) ?? 0))
+        const highestCellLane = Math.max(-1, ...cellWeekMarkers.map((marker) => weekMarkerLanes.get(getWeekMarkerLaneKey(marker)) ?? 0))
 
               return (
                 <button
@@ -841,7 +845,7 @@ function CalendarMonthGrid({
                   style={{ minHeight: `${(compact ? 108 : 132) + Math.max(0, maxWeekMarkerLane) * 30}px` }}
                 >
                   {cellWeekMarkers.map((weekMarker) => {
-                    const lane = weekMarkerLanes.get(weekMarker.id) ?? 0
+              const lane = weekMarkerLanes.get(getWeekMarkerLaneKey(weekMarker)) ?? 0
                     const previousHasMarker = previousCell?.weekMarkers.some((marker) => marker.id === weekMarker.id) ?? false
                     const nextHasMarker = nextCell?.weekMarkers.some((marker) => marker.id === weekMarker.id) ?? false
                     const weekColor = getWeekMarkerColor(weekMarker.colorKey)
