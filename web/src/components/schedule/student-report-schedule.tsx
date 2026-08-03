@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { GENERAL_EVENT_TYPES } from '@/lib/types/schedule-management'
 import { normalizeExternalUrl } from '@/lib/external-url'
 import { AssignmentCalendarPreview, CycleBadge, cycleNameFromAssignment, weekNumberLabel } from '@/components/schedule/cycle-info'
-import type { AthleteScheduleBundle, AssignmentDetail, ExerciseRow, GeneralEventDetail, StudentDashboardSummary } from '@/services/schedule'
+import type { AthleteScheduleBundle, AssignmentDetail, ExerciseRow, GeneralEventDetail, StudentDashboardSummary, WeekMarker } from '@/services/schedule'
 
 type ScheduleItem =
   | {
@@ -28,7 +28,17 @@ type CalendarCell = {
   day: number
   inCurrentMonth: boolean
   items: ScheduleItem[]
+  weekMarkers: WeekMarker[]
 }
+
+const WEEK_MARKER_COLORS = [
+  { key: 'sky', badgeClass: 'lab-week-sky-badge', chipClass: 'lab-week-sky-chip' },
+  { key: 'emerald', badgeClass: 'lab-week-emerald-badge', chipClass: 'lab-week-emerald-chip' },
+  { key: 'amber', badgeClass: 'lab-week-amber-badge', chipClass: 'lab-week-amber-chip' },
+  { key: 'violet', badgeClass: 'lab-week-violet-badge', chipClass: 'lab-week-violet-chip' },
+  { key: 'rose', badgeClass: 'lab-week-rose-badge', chipClass: 'lab-week-rose-chip' },
+  { key: 'slate', badgeClass: 'lab-week-slate-badge', chipClass: 'lab-week-slate-chip' },
+] as const
 
 type StudentReportScheduleProps = {
   schedule: AthleteScheduleBundle
@@ -73,6 +83,28 @@ function formatMonthLabel(isoMonth: string) {
 
 function rangeIncludes(date: string, startDate: string, endDate: string) {
   return date >= startDate && date <= endDate
+}
+
+function resolveWeekMarkers(date: string, markers: WeekMarker[]) {
+  return markers.filter((marker) => rangeIncludes(date, marker.startDate, marker.endDate))
+}
+
+function getWeekMarkerLanes(markers: WeekMarker[]) {
+  const laneEndDates: string[] = []
+  const lanes = new Map<string, number>()
+
+  for (const marker of [...markers].sort((left, right) => left.startDate.localeCompare(right.startDate) || left.id.localeCompare(right.id))) {
+    let lane = laneEndDates.findIndex((endDate) => endDate < marker.startDate)
+    if (lane === -1) lane = laneEndDates.length
+    laneEndDates[lane] = marker.endDate
+    lanes.set(marker.id, lane)
+  }
+
+  return lanes
+}
+
+function getWeekMarkerColor(colorKey?: string) {
+  return WEEK_MARKER_COLORS.find((option) => option.key === colorKey) ?? WEEK_MARKER_COLORS[0]
 }
 
 function truncateText(value: string, maxLength: number) {
@@ -149,7 +181,7 @@ function buildScheduleItems(scheduleState: AthleteScheduleBundle): ScheduleItem[
   })
 }
 
-function buildMonthDays(calendarItems: ScheduleItem[], visibleMonth: string): CalendarCell[] {
+function buildMonthDays(calendarItems: ScheduleItem[], visibleMonth: string, weekMarkers: WeekMarker[]): CalendarCell[] {
   const base = firstDayOfMonth(visibleMonth)
   const year = base.getFullYear()
   const month = base.getMonth()
@@ -160,12 +192,12 @@ function buildMonthDays(calendarItems: ScheduleItem[], visibleMonth: string): Ca
   for (let index = 0; index < firstWeekday; index += 1) {
     const date = new Date(year, month, index - firstWeekday + 1)
     const iso = `${date.getFullYear()}-${padMonth(date.getMonth() + 1)}-${padMonth(date.getDate())}`
-    cells.push({ date: iso, day: date.getDate(), inCurrentMonth: false, items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)) })
+    cells.push({ date: iso, day: date.getDate(), inCurrentMonth: false, items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)), weekMarkers: resolveWeekMarkers(iso, weekMarkers) })
   }
 
   for (let day = 1; day <= daysInMonth; day += 1) {
     const iso = `${visibleMonth}-${padMonth(day)}`
-    cells.push({ date: iso, day, inCurrentMonth: true, items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)) })
+    cells.push({ date: iso, day, inCurrentMonth: true, items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)), weekMarkers: resolveWeekMarkers(iso, weekMarkers) })
   }
 
   while (cells.length % 7 !== 0) {
@@ -173,7 +205,7 @@ function buildMonthDays(calendarItems: ScheduleItem[], visibleMonth: string): Ca
     const date = new Date(`${last.date}T00:00:00`)
     date.setDate(date.getDate() + 1)
     const iso = `${date.getFullYear()}-${padMonth(date.getMonth() + 1)}-${padMonth(date.getDate())}`
-    cells.push({ date: iso, day: date.getDate(), inCurrentMonth: false, items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)) })
+    cells.push({ date: iso, day: date.getDate(), inCurrentMonth: false, items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)), weekMarkers: resolveWeekMarkers(iso, weekMarkers) })
   }
 
   return cells
@@ -750,6 +782,8 @@ function CalendarMonthGrid({
   visibleMonth,
   monthDays,
   selectedDate,
+  weekMarkerLanes,
+  maxWeekMarkerLane,
   onPreviousMonth,
   onNextMonth,
   onSelectDate,
@@ -758,6 +792,8 @@ function CalendarMonthGrid({
   visibleMonth: string
   monthDays: CalendarCell[]
   selectedDate: string
+  weekMarkerLanes: Map<string, number>
+  maxWeekMarkerLane: number
   onPreviousMonth: () => void
   onNextMonth: () => void
   onSelectDate: (cell: CalendarCell) => void
@@ -785,12 +821,16 @@ function CalendarMonthGrid({
           </div>
 
           <div className="grid gap-px rounded-b-[1.25rem] bg-slate-200" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-            {monthDays.map((cell) => {
+            {monthDays.map((cell, cellIndex) => {
               const assignmentCount = cell.items.filter((item) => item.kind === 'assignment').length
               const eventCount = cell.items.filter((item) => item.kind === 'event').length
               const isSelected = cell.date === selectedDate
               const isToday = cell.date === todayIso()
               const previewItems = cell.items.slice(0, 2)
+              const cellWeekMarkers = cell.weekMarkers
+              const previousCell = cellIndex % 7 === 0 ? null : monthDays[cellIndex - 1]
+              const nextCell = cellIndex % 7 === 6 ? null : monthDays[cellIndex + 1]
+              const highestCellLane = Math.max(-1, ...cellWeekMarkers.map((marker) => weekMarkerLanes.get(marker.id) ?? 0))
 
               return (
                 <button
@@ -798,20 +838,36 @@ function CalendarMonthGrid({
                   type="button"
                   onClick={() => onSelectDate(cell)}
                   className={`relative flex ${compact ? 'min-h-[108px]' : 'min-h-[132px]'} w-full min-w-0 flex-col bg-white p-3 text-left transition hover:z-10 hover:bg-slate-50 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${isSelected ? 'z-10 bg-sky-50 ring-2 ring-inset ring-sky-400' : ''} ${cell.inCurrentMonth ? 'text-slate-900' : 'text-slate-300'}`}
+                  style={{ minHeight: `${(compact ? 108 : 132) + Math.max(0, maxWeekMarkerLane) * 30}px` }}
                 >
+                  {cellWeekMarkers.map((weekMarker) => {
+                    const lane = weekMarkerLanes.get(weekMarker.id) ?? 0
+                    const previousHasMarker = previousCell?.weekMarkers.some((marker) => marker.id === weekMarker.id) ?? false
+                    const nextHasMarker = nextCell?.weekMarkers.some((marker) => marker.id === weekMarker.id) ?? false
+                    const weekColor = getWeekMarkerColor(weekMarker.colorKey)
+                    return (
+                      <div
+                        key={weekMarker.id}
+                        className={`pointer-events-none absolute -left-px -right-px z-0 flex h-7 items-center ${weekColor.badgeClass} ${!previousHasMarker ? 'rounded-l-lg pl-2' : ''} ${!nextHasMarker ? 'rounded-r-lg pr-2' : ''}`}
+                        style={{ top: `${44 + lane * 30}px` }}
+                      >
+                        {!previousHasMarker ? <span className="min-w-0 truncate text-[11px] font-semibold leading-none">Week {weekMarker.weekNum}{weekMarker.note ? ` · ${weekMarker.note}` : ''}</span> : null}
+                      </div>
+                    )
+                  })}
                   <div className="flex items-start justify-between gap-2">
-                    <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${isSelected ? 'bg-sky-500 text-white' : isToday ? 'bg-slate-900 text-white' : cell.inCurrentMonth ? 'bg-slate-100 text-slate-900' : 'bg-slate-100 text-slate-400'}`}>
+                    <div className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${isSelected ? 'bg-sky-500 text-white' : isToday ? 'bg-slate-900 text-white' : cell.inCurrentMonth ? 'bg-slate-100 text-slate-900' : 'bg-slate-100 text-slate-400'}`}>
                       {cell.day}
                     </div>
                     {(assignmentCount > 0 || eventCount > 0) ? (
-                      <div className="flex flex-col items-end gap-1 text-[10px] font-semibold">
+                      <div className="relative z-10 flex flex-col items-end gap-1 text-[10px] font-semibold">
                         {assignmentCount > 0 ? <span className="rounded-full bg-orange-100 px-2 py-1 text-orange-700">課表 {assignmentCount}</span> : null}
                         {eventCount > 0 ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700">事件 {eventCount}</span> : null}
                       </div>
                     ) : null}
                   </div>
 
-                  <div className="mt-3 space-y-2">
+                  <div className="relative z-10 space-y-2" style={{ marginTop: `${cellWeekMarkers.length > 0 ? 44 + Math.max(0, highestCellLane) * 30 : 12}px` }}>
                     {previewItems.map((item) => (
                       <div
                         key={`${cell.date}-${item.kind}-${item.id}`}
@@ -967,7 +1023,20 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
     [scheduleState.generalEvents, selectedDate],
   )
 
-  const monthDays = useMemo(() => buildMonthDays(calendarItems, visibleMonth), [calendarItems, visibleMonth])
+  const selectedDateWeekMarkers = useMemo(
+    () => resolveWeekMarkers(selectedDate, scheduleState.weekMarkers),
+    [scheduleState.weekMarkers, selectedDate],
+  )
+  const weekMarkerLanes = useMemo(() => getWeekMarkerLanes(scheduleState.weekMarkers), [scheduleState.weekMarkers])
+  const maxWeekMarkerLane = useMemo(
+    () => Math.max(-1, ...Array.from(weekMarkerLanes.values())),
+    [weekMarkerLanes],
+  )
+
+  const monthDays = useMemo(
+    () => buildMonthDays(calendarItems, visibleMonth, scheduleState.weekMarkers),
+    [calendarItems, scheduleState.weekMarkers, visibleMonth],
+  )
 
   useEffect(() => {
     if (!isDayModalOpen) return
@@ -1070,23 +1139,31 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
             onPreviousMonth={() => setVisibleMonth((current) => shiftMonth(current, -1))}
             onNextMonth={() => setVisibleMonth((current) => shiftMonth(current, 1))}
             onSelectDate={(cell) => selectDate(cell.date, cell.items.length > 2)}
+            weekMarkerLanes={weekMarkerLanes}
+            maxWeekMarkerLane={maxWeekMarkerLane}
           />
         </div>
       </article>
 
       <section className="space-y-6">
-        <article ref={detailSectionRef} className="lab-card p-6 sm:p-7">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <article ref={detailSectionRef} className="lab-card overflow-hidden p-7 sm:p-8">
+          <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="lab-eyebrow">Selected Day</p>
-              <h2 className="lab-section-title mt-2">{selectedDate}</h2>
-              <p className="lab-copy mt-3">下方顯示這一天的完整課表安排與一般事件；目前可直接回報的欄位為組數與重量，其餘欄位保留教練原始安排內容。</p>
+              <h2 className="lab-section-title mt-3">{selectedDate}</h2>
             </div>
             <div className="flex flex-wrap gap-2">
-              <span className="lab-badge-primary">課表 {selectedDateAssignments.length}</span>
-              <span className="lab-badge-success">事件 {selectedDateEvents.length}</span>
+              <span className="lab-badge bg-white/90 text-slate-900">課表 {selectedDateAssignments.length}</span>
+              <span className="lab-badge bg-white/90 text-slate-900">事件 {selectedDateEvents.length}</span>
+              {selectedDateWeekMarkers.map((marker) => (
+                <span key={marker.id} className={`lab-badge ${getWeekMarkerColor(marker.colorKey).chipClass}`}>
+                  Week {marker.weekNum}{marker.note ? `・${marker.note}` : ''}
+                </span>
+              ))}
             </div>
           </div>
+
+          <p className="lab-copy mt-5 px-1">下方顯示這一天的完整課表安排與一般事件；目前可直接回報的欄位為組數與重量，其餘欄位保留教練原始安排內容。</p>
 
           <div className="mt-6 space-y-4">
             {selectedDateAssignments.map((assignment) => (
@@ -1105,19 +1182,23 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
           </div>
         </article>
 
-        <article className="lab-card p-6 sm:p-7">
-          <button
-            type="button"
-            className="flex w-full items-start justify-between gap-4 text-left"
-            onClick={() => setIsEventFormOpen((current) => !current)}
-          >
-            <div>
-              <p className="lab-eyebrow">Add Event</p>
-              <h2 className="lab-section-title mt-3">新增自己的事件</h2>
-              <p className="lab-copy mt-3">沿用教練端相同風格的事件表單。新增後會寫入自己的 `athlete_events`，教練查看你的行事曆時也會同步看到。</p>
-            </div>
-            <span className="pt-1 text-lg font-semibold text-slate-400">{isEventFormOpen ? '▾' : '▸'}</span>
-          </button>
+        <article className="lab-card overflow-hidden p-7 sm:p-8">
+          <div className="lab-section-heading lab-section-heading-flush !p-0">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left sm:px-6 sm:py-6"
+              onClick={() => setIsEventFormOpen((current) => !current)}
+              aria-expanded={isEventFormOpen}
+            >
+              <div>
+                <p className="lab-eyebrow">Add Event</p>
+                <h2 className="lab-section-title mt-3">新增自己的事件</h2>
+              </div>
+              <span className="lab-badge bg-white/90 text-slate-900" aria-hidden="true">{isEventFormOpen ? '收起' : '展開'}</span>
+            </button>
+          </div>
+
+          <p className="lab-copy mt-5 px-1">沿用教練端相同風格的事件表單。新增後會寫入自己的 athlete_events，教練查看你的行事曆時也會同步看到。</p>
 
           {isEventFormOpen ? (
             <div className="mt-5 grid gap-4">

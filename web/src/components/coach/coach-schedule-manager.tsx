@@ -10,7 +10,7 @@ import type {
   BlockTaxonomySportRecord,
   BlockTaxonomyTrainingCategoryRecord,
 } from '@/lib/types/block-taxonomy'
-import type { AthleteScheduleBundle, AssignmentDetail, BlockRecord, GeneralEventDetail } from '@/services/schedule'
+import type { AthleteScheduleBundle, AssignmentDetail, BlockRecord, GeneralEventDetail, WeekMarker } from '@/services/schedule'
 
 const UNCATEGORIZED_SELECTOR = '__uncategorized__'
 
@@ -80,15 +80,6 @@ type EditableExercise = {
 type EditableSection = {
   name: string
   rows: EditableExercise[]
-}
-
-type WeekMarker = {
-  id: string
-  startDate: string
-  endDate: string
-  weekNum: string
-  note: string
-  colorKey: string
 }
 
 const DEFAULT_WEEK_MARKER_COLOR_KEY = 'sky'
@@ -211,35 +202,44 @@ function resolveWeekMarker(date: string, markers: WeekMarker[]) {
   return null
 }
 
+function resolveWeekMarkers(date: string, markers: WeekMarker[]) {
+  return markers.filter((marker) => rangeIncludes(date, marker.startDate, marker.endDate))
+}
+
+function getWeekMarkerLanes(markers: WeekMarker[]) {
+  const laneEndDates: string[] = []
+  const lanes = new Map<string, number>()
+
+  for (const marker of [...markers].sort((left, right) => left.startDate.localeCompare(right.startDate) || left.id.localeCompare(right.id))) {
+    let lane = laneEndDates.findIndex((endDate) => endDate < marker.startDate)
+    if (lane === -1) lane = laneEndDates.length
+    laneEndDates[lane] = marker.endDate
+    lanes.set(marker.id, lane)
+  }
+
+  return lanes
+}
+
 function getWeekMarkerColor(colorKey?: string) {
   return WEEK_MARKER_COLORS.find((option) => option.key === colorKey) ?? WEEK_MARKER_COLORS[0]
 }
 
-function loadWeekMarkers(storageKey: string) {
-  if (typeof window === 'undefined') return [] as WeekMarker[]
+function loadLegacyWeekMarkers(storageKey: string): WeekMarker[] {
+  if (typeof window === 'undefined') return []
 
   try {
-    const raw = window.localStorage.getItem(storageKey)
-    if (!raw) return [] as WeekMarker[]
-
-    const parsed = JSON.parse(raw) as WeekMarker[]
-    if (!Array.isArray(parsed)) return [] as WeekMarker[]
-
+    const parsed = JSON.parse(window.localStorage.getItem(storageKey) ?? '[]') as unknown
+    if (!Array.isArray(parsed)) return []
     return parsed.filter(
-      (marker) =>
-        marker &&
-        typeof marker.id === 'string' &&
-        typeof marker.startDate === 'string' &&
-        typeof marker.endDate === 'string' &&
-        typeof marker.weekNum === 'string' &&
-        typeof marker.note === 'string',
+      (marker): marker is WeekMarker =>
+        Boolean(marker) &&
+        typeof marker === 'object' &&
+        typeof (marker as WeekMarker).startDate === 'string' &&
+        typeof (marker as WeekMarker).endDate === 'string' &&
+        typeof (marker as WeekMarker).weekNum === 'string',
     )
-    .map((marker) => ({
-      ...marker,
-      colorKey: typeof marker.colorKey === 'string' ? marker.colorKey : DEFAULT_WEEK_MARKER_COLOR_KEY,
-    }))
   } catch {
-    return [] as WeekMarker[]
+    return []
   }
 }
 
@@ -965,11 +965,9 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
   const detailSectionRef = useRef<HTMLElement | null>(null)
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [visibleMonth, setVisibleMonth] = useState(initialDate.slice(0, 7))
-  const weekMarkerStorageKey = `lab33-athlete-week-markers-${athleteId}`
-  // Keep the first client render identical to the server render. Local storage is
-  // deliberately read after mounting, because it does not exist during SSR.
-  const [weekMarkers, setWeekMarkers] = useState<WeekMarker[]>([])
-  const [hasLoadedWeekMarkers, setHasLoadedWeekMarkers] = useState(false)
+  const weekMarkers = schedule.weekMarkers
+  const [isSavingWeekMarker, setIsSavingWeekMarker] = useState(false)
+  const hasMigratedLegacyWeekMarkers = useRef(false)
   const [weekRangeStartDate, setWeekRangeStartDate] = useState(initialDate)
   const [weekRangeEndDate, setWeekRangeEndDate] = useState(initialDate)
   const [weekRangeNumber, setWeekRangeNumber] = useState('1')
@@ -983,7 +981,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
     ({
       ...defaultAssignmentForm(initialDate),
       blockId: String(initialVisibleBlocks[0]?.id ?? ''),
-      weekNum: '1',
+      weekNum: resolveWeekMarker(initialDate, initialSchedule.weekMarkers)?.weekNum ?? '1',
       trainingCategory:
         taxonomy.trainingCategories.find((category) => category.id === initialTrainingCategoryId)?.name ??
         TRAINING_CATEGORIES[0],
@@ -1086,6 +1084,12 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
   )
 
   const selectedDateWeekMarker = useMemo(() => resolveWeekMarker(selectedDate, weekMarkers), [selectedDate, weekMarkers])
+  const selectedDateWeekMarkers = useMemo(() => resolveWeekMarkers(selectedDate, weekMarkers), [selectedDate, weekMarkers])
+  const weekMarkerLanes = useMemo(() => getWeekMarkerLanes(weekMarkers), [weekMarkers])
+  const maxWeekMarkerLane = useMemo(
+    () => Math.max(-1, ...Array.from(weekMarkerLanes.values())),
+    [weekMarkerLanes],
+  )
 
   const monthDays = useMemo(() => {
     const base = firstDayOfMonth(visibleMonth)
@@ -1093,7 +1097,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
     const month = base.getMonth()
     const firstWeekday = (base.getDay() + 6) % 7
     const daysInMonth = new Date(year, month + 1, 0).getDate()
-    const cells: Array<{ date: string; day: number; inCurrentMonth: boolean; items: ScheduleItem[]; weekMarker: WeekMarker | null }> = []
+    const cells: Array<{ date: string; day: number; inCurrentMonth: boolean; items: ScheduleItem[]; weekMarkers: WeekMarker[] }> = []
 
     for (let index = 0; index < firstWeekday; index += 1) {
       const date = new Date(year, month, index - firstWeekday + 1)
@@ -1103,7 +1107,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
         day: date.getDate(),
         inCurrentMonth: false,
         items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)),
-        weekMarker: resolveWeekMarker(iso, weekMarkers),
+        weekMarkers: resolveWeekMarkers(iso, weekMarkers),
       })
     }
 
@@ -1114,7 +1118,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
         day,
         inCurrentMonth: true,
         items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)),
-        weekMarker: resolveWeekMarker(iso, weekMarkers),
+        weekMarkers: resolveWeekMarkers(iso, weekMarkers),
       })
     }
 
@@ -1128,31 +1132,12 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
         day: date.getDate(),
         inCurrentMonth: false,
         items: calendarItems.filter((item) => rangeIncludes(iso, item.startDate, item.endDate)),
-        weekMarker: resolveWeekMarker(iso, weekMarkers),
+        weekMarkers: resolveWeekMarkers(iso, weekMarkers),
       })
     }
 
     return cells
   }, [calendarItems, visibleMonth, weekMarkers])
-
-  useEffect(() => {
-    const storedMarkers = loadWeekMarkers(weekMarkerStorageKey)
-    const frameId = window.requestAnimationFrame(() => {
-      setWeekMarkers(storedMarkers)
-      setAssignmentForm((current) => ({
-        ...current,
-        weekNum: resolveWeekMarker(initialDate, storedMarkers)?.weekNum ?? current.weekNum,
-      }))
-      setHasLoadedWeekMarkers(true)
-    })
-
-    return () => window.cancelAnimationFrame(frameId)
-  }, [initialDate, weekMarkerStorageKey])
-
-  useEffect(() => {
-    if (!hasLoadedWeekMarkers) return
-    window.localStorage.setItem(weekMarkerStorageKey, JSON.stringify(weekMarkers))
-  }, [hasLoadedWeekMarkers, weekMarkerStorageKey, weekMarkers])
 
   useEffect(() => {
     if (!isDayModalOpen) return
@@ -1172,6 +1157,46 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
       document.body.style.overflow = previousOverflow
     }
   }, [isDayModalOpen])
+
+  useEffect(() => {
+    if (hasMigratedLegacyWeekMarkers.current || schedule.weekMarkers.length > 0) return
+    hasMigratedLegacyWeekMarkers.current = true
+
+    const legacyStorageKey = `lab33-athlete-week-markers-${athleteId}`
+    const legacyMarkers = loadLegacyWeekMarkers(legacyStorageKey)
+    if (legacyMarkers.length === 0) return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        let latestSchedule = schedule
+        for (const marker of legacyMarkers) {
+          const payload = await requestJson<{ schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/week-markers`, {
+            method: 'POST',
+            body: JSON.stringify({
+              start_date: marker.startDate,
+              end_date: marker.endDate,
+              week_num: Number(marker.weekNum),
+              note: marker.note ?? '',
+              color_key: marker.colorKey || DEFAULT_WEEK_MARKER_COLOR_KEY,
+            }),
+          })
+          latestSchedule = payload.schedule
+        }
+        if (!cancelled) {
+          setSchedule(latestSchedule)
+          setMessage('已將此瀏覽器原有的週期同步給學員。')
+          window.localStorage.removeItem(legacyStorageKey)
+        }
+      } catch (migrationError) {
+        if (!cancelled) setError(apiErrorMessage(migrationError, '舊週期同步失敗，請重新套用週期。'))
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [athleteId, schedule])
 
   function applySchedule(nextSchedule: AthleteScheduleBundle, nextMessage?: string) {
     setSchedule(nextSchedule)
@@ -1194,56 +1219,63 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
     setIsDayModalOpen(shouldOpenModal)
   }
 
-  function handleApplyWeekMarker() {
+  async function handleApplyWeekMarker() {
     const normalized = normalizeRange(weekRangeStartDate, weekRangeEndDate)
     if (!normalized.startDate || !normalized.endDate || !weekRangeNumber.trim()) {
       setError('請先完整選擇週期開始日期、結束日期與 Week 編號。')
       return
     }
 
-    const nextMarker: WeekMarker = {
-      id: `marker-${Date.now()}`,
-      startDate: normalized.startDate,
-      endDate: normalized.endDate,
-      weekNum: weekRangeNumber.trim(),
-      note: weekRangeNote.trim(),
-      colorKey: weekRangeColorKey || DEFAULT_WEEK_MARKER_COLOR_KEY,
-    }
-
-    setWeekMarkers((current) => [...current, nextMarker])
-    setMessage(`已套用 Week ${nextMarker.weekNum}：${normalized.startDate} ～ ${normalized.endDate}`)
-    setError(null)
-
-    if (rangeIncludes(selectedDate, normalized.startDate, normalized.endDate)) {
-      setAssignmentForm((current) => ({
-        ...current,
-        weekNum: nextMarker.weekNum,
-        cycleGoal: nextMarker.note && !current.cycleGoal.trim() ? nextMarker.note : current.cycleGoal,
-      }))
+    setIsSavingWeekMarker(true)
+    try {
+      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/week-markers`, {
+        method: 'POST',
+        body: JSON.stringify({
+          start_date: normalized.startDate,
+          end_date: normalized.endDate,
+          week_num: Number(weekRangeNumber),
+          note: weekRangeNote.trim(),
+          color_key: weekRangeColorKey || DEFAULT_WEEK_MARKER_COLOR_KEY,
+        }),
+      })
+      applySchedule(payload.schedule, payload.message)
+      if (rangeIncludes(selectedDate, normalized.startDate, normalized.endDate)) {
+        setAssignmentForm((current) => ({
+          ...current,
+          weekNum: weekRangeNumber.trim(),
+          cycleGoal: weekRangeNote.trim() && !current.cycleGoal.trim() ? weekRangeNote.trim() : current.cycleGoal,
+        }))
+      }
+    } catch (requestError) {
+      setError(apiErrorMessage(requestError, '套用週期失敗。'))
+    } finally {
+      setIsSavingWeekMarker(false)
     }
   }
 
-  function handleDeleteWeekMarker(markerId: string) {
+  async function handleDeleteWeekMarker(markerId: string) {
     const targetMarker = weekMarkers.find((marker) => marker.id === markerId)
     if (!targetMarker) return
 
     const confirmed = window.confirm(`確認要刪除 Week ${targetMarker.weekNum}（${targetMarker.startDate} ～ ${targetMarker.endDate}）嗎？`)
     if (!confirmed) return
 
-    setWeekMarkers((current) => current.filter((marker) => marker.id !== markerId))
-    setMessage(`已刪除 Week ${targetMarker.weekNum}：${targetMarker.startDate} ～ ${targetMarker.endDate}`)
-    setError(null)
-
-    const nextSelectedDateMarker = resolveWeekMarker(
-      selectedDate,
-      weekMarkers.filter((marker) => marker.id !== markerId),
-    )
-
-    if (!nextSelectedDateMarker) {
-      setAssignmentForm((current) => ({
-        ...current,
-        weekNum: current.startDate === selectedDate ? '1' : current.weekNum,
-      }))
+    setIsSavingWeekMarker(true)
+    try {
+      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/week-markers/${markerId}`, {
+        method: 'DELETE',
+      })
+      applySchedule(payload.schedule, payload.message)
+      if (!resolveWeekMarker(selectedDate, payload.schedule.weekMarkers)) {
+        setAssignmentForm((current) => ({
+          ...current,
+          weekNum: current.startDate === selectedDate ? '1' : current.weekNum,
+        }))
+      }
+    } catch (requestError) {
+      setError(apiErrorMessage(requestError, '刪除週期失敗。'))
+    } finally {
+      setIsSavingWeekMarker(false)
     }
   }
 
@@ -1320,15 +1352,16 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
 
   return (
     <div className="space-y-6">
-      <article className="lab-card p-6 sm:p-7">
-        <p className="lab-eyebrow">Calendar Planner</p>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <article className="lab-card overflow-hidden p-7 sm:p-8">
+        <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="lab-section-title">課表行事曆</h2>
-            <p className="lab-copy mt-3">先用月曆挑一天，再安排課表或新增一般事件。這裡可建立 / 刪除安排，並直接編輯這次 assignment 的課表內容。</p>
+            <p className="lab-eyebrow">Calendar Planner</p>
+            <h2 className="lab-section-title mt-3">課表行事曆</h2>
           </div>
-          <span className="lab-badge-primary">已選日期：{selectedDate}</span>
+          <span className="lab-badge bg-white/90 text-slate-900">已選日期：{selectedDate}</span>
         </div>
+
+        <p className="lab-copy mt-5 px-1">先用月曆挑一天，再安排課表或新增一般事件。這裡可建立 / 刪除安排，並直接編輯這次 assignment 的課表內容。</p>
 
         <div className="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
           <div className="mb-5 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4 sm:px-5">
@@ -1340,11 +1373,11 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                   已選週期範圍：{normalizeRange(weekRangeStartDate, weekRangeEndDate).startDate} ～ {normalizeRange(weekRangeStartDate, weekRangeEndDate).endDate}
                 </p>
               </div>
-              {selectedDateWeekMarker ? (
-                <div className={`rounded-full px-4 py-2 text-sm font-semibold ${getWeekMarkerColor(selectedDateWeekMarker.colorKey).chipClass}`}>
-                  {selectedDate} 屬於 Week {selectedDateWeekMarker.weekNum}{selectedDateWeekMarker.note ? `・${selectedDateWeekMarker.note}` : ''}
+              {selectedDateWeekMarkers.map((marker) => (
+                <div key={marker.id} className={`rounded-full px-4 py-2 text-sm font-semibold ${getWeekMarkerColor(marker.colorKey).chipClass}`}>
+                  {selectedDate} 屬於 Week {marker.weekNum}{marker.note ? `・${marker.note}` : ''}
                 </div>
-              ) : null}
+              ))}
             </div>
 
             <div className="mt-4 flex flex-wrap items-end gap-3">
@@ -1364,8 +1397,8 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                 <label className="text-sm font-semibold text-slate-700">備註</label>
                 <input className="lab-input" value={weekRangeNote} onChange={(event) => setWeekRangeNote(event.target.value)} placeholder="例如：第一週、恢復週" />
               </div>
-              <button type="button" className="lab-btn-primary w-full sm:w-auto" onClick={handleApplyWeekMarker}>
-                套用週期
+              <button type="button" className="lab-btn-primary w-full sm:w-auto" disabled={isSavingWeekMarker} onClick={() => void handleApplyWeekMarker()}>
+                {isSavingWeekMarker ? '儲存中...' : '套用週期'}
               </button>
             </div>
 
@@ -1401,7 +1434,8 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                     <button
                       type="button"
                       className="rounded-full border border-current/20 bg-white/50 px-2 py-0.5 text-[11px] font-semibold transition hover:bg-white/80"
-                      onClick={() => handleDeleteWeekMarker(marker.id)}
+                      disabled={isSavingWeekMarker}
+                      onClick={() => void handleDeleteWeekMarker(marker.id)}
                     >
                       刪除週期
                     </button>
@@ -1440,12 +1474,10 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                   const isSelected = cell.date === selectedDate
                   const isToday = cell.date === todayIso()
                   const previewItems = cell.items.slice(0, 2)
-                  const weekMarker = cell.weekMarker
+                  const cellWeekMarkers = cell.weekMarkers
                   const previousCell = cellIndex % 7 === 0 ? null : monthDays[cellIndex - 1]
                   const nextCell = cellIndex % 7 === 6 ? null : monthDays[cellIndex + 1]
-                  const isWeekSegmentStart = weekMarker ? previousCell?.weekMarker?.id !== weekMarker.id : false
-                  const isWeekSegmentEnd = weekMarker ? nextCell?.weekMarker?.id !== weekMarker.id : false
-                  const weekColor = getWeekMarkerColor(weekMarker?.colorKey)
+                  const highestCellLane = Math.max(-1, ...cellWeekMarkers.map((marker) => weekMarkerLanes.get(marker.id) ?? 0))
 
                   return (
                     <button
@@ -1453,18 +1485,23 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                       type="button"
                       onClick={() => selectDate(cell.date, cell.items.length > 2)}
                       className={`relative flex min-h-[132px] w-full min-w-0 flex-col bg-white p-3 text-left transition hover:z-10 hover:bg-slate-50 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${isSelected ? 'z-10 bg-slate-50 ring-2 ring-inset ring-slate-900' : ''} ${cell.inCurrentMonth ? 'text-slate-900' : 'text-slate-300'}`}
+                      style={{ minHeight: `${132 + Math.max(0, maxWeekMarkerLane) * 30}px` }}
                     >
-                      {weekMarker ? (
-                        <div
-                          className={`pointer-events-none absolute -left-px -right-px top-11 z-0 flex h-7 items-center ${weekColor.badgeClass} ${isWeekSegmentStart ? 'rounded-l-lg pl-2' : ''} ${isWeekSegmentEnd ? 'rounded-r-lg pr-2' : ''}`}
-                        >
-                          {isWeekSegmentStart ? (
-                            <span className="min-w-0 truncate text-[11px] font-semibold leading-none">
-                              Week {weekMarker.weekNum}{weekMarker.note ? ` · ${weekMarker.note}` : ''}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
+                      {cellWeekMarkers.map((weekMarker) => {
+                        const lane = weekMarkerLanes.get(weekMarker.id) ?? 0
+                        const previousHasMarker = previousCell?.weekMarkers.some((marker) => marker.id === weekMarker.id) ?? false
+                        const nextHasMarker = nextCell?.weekMarkers.some((marker) => marker.id === weekMarker.id) ?? false
+                        const weekColor = getWeekMarkerColor(weekMarker.colorKey)
+                        return (
+                          <div
+                            key={weekMarker.id}
+                            className={`pointer-events-none absolute -left-px -right-px z-0 flex h-7 items-center ${weekColor.badgeClass} ${!previousHasMarker ? 'rounded-l-lg pl-2' : ''} ${!nextHasMarker ? 'rounded-r-lg pr-2' : ''}`}
+                            style={{ top: `${44 + lane * 30}px` }}
+                          >
+                            {!previousHasMarker ? <span className="min-w-0 truncate text-[11px] font-semibold leading-none">Week {weekMarker.weekNum}{weekMarker.note ? ` · ${weekMarker.note}` : ''}</span> : null}
+                          </div>
+                        )
+                      })}
 
                       <div className="flex items-start justify-between gap-2">
                         <div className="relative z-10 space-y-2">
@@ -1480,7 +1517,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
                         ) : null}
                       </div>
 
-                      <div className={`relative z-10 space-y-2 ${weekMarker ? 'mt-11' : 'mt-3'}`}>
+                      <div className="relative z-10 space-y-2" style={{ marginTop: `${cellWeekMarkers.length > 0 ? 44 + Math.max(0, highestCellLane) * 30 : 12}px` }}>
                         {previewItems.map((item) => (
                           <div
                             key={`${cell.date}-${item.kind}-${item.id}`}
@@ -1709,20 +1746,22 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
         </div>
       ) : null}
 
-      <section ref={detailSectionRef} className="lab-content-section">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <section ref={detailSectionRef} className="lab-card overflow-hidden p-7 sm:p-8">
+        <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="lab-eyebrow">Selected Day</p>
-            <h2 className="lab-section-title mt-2">{selectedDate}</h2>
-            <p className="lab-copy mt-3">下方顯示這一天的完整課表安排與一般事件；課表內容編輯也在這裡進行。</p>
+            <h2 className="lab-section-title mt-3">{selectedDate}</h2>
           </div>
           <div className="flex flex-wrap gap-2">
-            <span className="lab-badge-primary">課表 {selectedDateAssignments.length}</span>
-            <span className="lab-badge-success">事件 {selectedDateEvents.length}</span>
+            <span className="lab-badge bg-white/90 text-slate-900">課表 {selectedDateAssignments.length}</span>
+            <span className="lab-badge bg-white/90 text-slate-900">事件 {selectedDateEvents.length}</span>
           </div>
         </div>
 
-        {selectedDateAssignments.length === 0 && selectedDateEvents.length === 0 ? (
+        <p className="lab-copy mt-5 px-1">下方顯示這一天的完整課表安排與一般事件；課表內容編輯也在這裡進行。</p>
+
+        <div className="mt-6">
+          {selectedDateAssignments.length === 0 && selectedDateEvents.length === 0 ? (
           <div className="lab-card-muted px-5 py-6 text-sm text-slate-600">這一天目前沒有任何安排。</div>
         ) : (
           <div className="space-y-4">
@@ -1736,6 +1775,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
             ))}
           </div>
         )}
+        </div>
       </section>
     </div>
   )

@@ -103,9 +103,19 @@ export type GeneralEventDetail = {
   empty_message: string
 }
 
+export type WeekMarker = {
+  id: string
+  startDate: string
+  endDate: string
+  weekNum: string
+  note: string
+  colorKey: string
+}
+
 export type AthleteScheduleBundle = {
   assignments: AssignmentDetail[]
   generalEvents: GeneralEventDetail[]
+  weekMarkers: WeekMarker[]
 }
 
 export type StudentDashboardSummary = {
@@ -282,6 +292,26 @@ async function fetchAthleteEvents(athleteId: number) {
 
   if (error) throw error
   return (data ?? []) as AthleteEventRecord[]
+}
+
+async function fetchAthleteWeekMarkers(athleteId: number): Promise<WeekMarker[]> {
+  const supabase = await getScheduleReadClient()
+  const { data, error } = await supabase
+    .from('athlete_week_markers')
+    .select('id, start_date, end_date, week_num, note, color_key')
+    .eq('athlete_id', athleteId)
+    .order('start_date', { ascending: true })
+    .order('id', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    startDate: text(row.start_date),
+    endDate: text(row.end_date),
+    weekNum: String(row.week_num ?? 1),
+    note: text(row.note),
+    colorKey: text(row.color_key) || 'sky',
+  }))
 }
 
 async function fetchAthleteBlockExercises(athleteBlockId: number) {
@@ -519,9 +549,10 @@ export async function getAthleteScheduleBundle(
   athleteId: number,
   options?: { blocks?: BlockRecord[] },
 ): Promise<AthleteScheduleBundle> {
-  const [athleteBlocks, athleteEvents] = await Promise.all([
+  const [athleteBlocks, athleteEvents, weekMarkers] = await Promise.all([
     fetchAthleteBlocks(athleteId),
     fetchAthleteEvents(athleteId),
+    fetchAthleteWeekMarkers(athleteId),
   ])
 
   const blocks =
@@ -540,6 +571,7 @@ export async function getAthleteScheduleBundle(
   return {
     assignments,
     generalEvents,
+    weekMarkers,
   }
 }
 

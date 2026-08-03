@@ -526,6 +526,74 @@ export async function deleteGeneralEventForAthlete(coach: CoachProfile, athleteI
   }
 }
 
+const WEEK_MARKER_COLOR_KEYS = new Set(['sky', 'emerald', 'amber', 'violet', 'rose', 'slate'])
+
+export async function createWeekMarkerForAthlete(
+  coach: CoachProfile,
+  athleteId: number,
+  payload: {
+    start_date: string
+    end_date: string
+    week_num: number
+    note: string
+    color_key: string
+  },
+): Promise<MutationResult> {
+  const athlete = await ensureCoachCanManageAthlete(coach, athleteId)
+  if (!athlete) return { error: '找不到可管理的學員。' }
+
+  const { admin, error: adminError } = await ensureAdmin()
+  if (!admin) return { error: adminError }
+
+  if (!payload.start_date || !payload.end_date || !Number.isInteger(payload.week_num) || payload.week_num < 1) {
+    return { error: '請完整輸入週期日期與有效的 Week 編號。' }
+  }
+  if (payload.end_date < payload.start_date) {
+    return { error: '結束日期不能早於開始日期。' }
+  }
+
+  const colorKey = WEEK_MARKER_COLOR_KEYS.has(payload.color_key) ? payload.color_key : 'sky'
+  const { error: insertError } = await admin.from('athlete_week_markers').insert({
+    athlete_id: athleteId,
+    created_by_coach_id: coach.id,
+    start_date: toIsoDate(payload.start_date),
+    end_date: toIsoDate(payload.end_date),
+    week_num: payload.week_num,
+    note: text(payload.note),
+    color_key: colorKey,
+  })
+  if (insertError) return { error: insertError.message }
+
+  return {
+    message: `已套用 Week ${payload.week_num}：${payload.start_date} ～ ${payload.end_date}`,
+    schedule: await refreshSchedule(athleteId),
+  }
+}
+
+export async function deleteWeekMarkerForAthlete(
+  coach: CoachProfile,
+  athleteId: number,
+  markerId: number,
+): Promise<MutationResult> {
+  const athlete = await ensureCoachCanManageAthlete(coach, athleteId)
+  if (!athlete) return { error: '找不到可管理的學員。' }
+
+  const { admin, error: adminError } = await ensureAdmin()
+  if (!admin) return { error: adminError }
+
+  const { error: deleteError } = await admin
+    .from('athlete_week_markers')
+    .delete()
+    .eq('id', markerId)
+    .eq('athlete_id', athleteId)
+  if (deleteError) return { error: deleteError.message }
+
+  return {
+    message: '已刪除週期。',
+    schedule: await refreshSchedule(athleteId),
+  }
+}
+
 export async function getCoachSchedulingPageData(coach: CoachProfile, athleteId: number) {
   const managedAthlete = await ensureCoachCanManageAthlete(coach, athleteId)
   if (!managedAthlete) {
