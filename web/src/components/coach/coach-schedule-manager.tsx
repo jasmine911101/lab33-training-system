@@ -33,6 +33,9 @@ type ScheduleItem =
 
 type CoachScheduleManagerProps = {
   athleteId: number
+  /** Allows the identical calendar UI to be used for a shared team schedule. */
+  scheduleApiBase?: string
+  allowAssignmentContentEditing?: boolean
   initialSchedule: AthleteScheduleBundle
   blocks: BlockRecord[]
   taxonomy: {
@@ -435,7 +438,7 @@ function ExerciseReadTable({ rows }: { rows: AssignmentDetail['sections'][number
   )
 }
 
-function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: AssignmentDetail; athleteId: number; onUpdated: (schedule: AthleteScheduleBundle, message?: string) => void }) {
+function AssignmentCard({ assignment, onUpdated, athleteId, scheduleApiBase, allowAssignmentContentEditing = true }: { assignment: AssignmentDetail; athleteId: number; scheduleApiBase: string; allowAssignmentContentEditing?: boolean; onUpdated: (schedule: AthleteScheduleBundle, message?: string) => void }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [isEditingContent, setIsEditingContent] = useState(false)
   const [isSavingContent, setIsSavingContent] = useState(false)
@@ -523,7 +526,7 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
   }
 
   async function handleDelete() {
-    const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/assignments/${assignment.record_id}`, {
+    const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`${scheduleApiBase}/assignments/${assignment.record_id}`, {
       method: 'DELETE',
     })
     onUpdated(payload.schedule, payload.message)
@@ -535,7 +538,7 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
 
     try {
       const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(
-        `/api/coach/athletes/${athleteId}/assignments/${assignment.record_id}/content`,
+        `${scheduleApiBase}/assignments/${assignment.record_id}/content`,
         {
           method: 'PUT',
           body: JSON.stringify({
@@ -593,7 +596,7 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
         </button>
         <div className="flex flex-wrap gap-2">
           <span className="lab-badge-primary">課表安排</span>
-          <button
+          {allowAssignmentContentEditing ? <button
             type="button"
             className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
             onClick={() => {
@@ -602,7 +605,7 @@ function AssignmentCard({ assignment, onUpdated, athleteId }: { assignment: Assi
             }}
           >
             {isEditingContent ? '收起課表內容編輯' : '編輯課表內容'}
-          </button>
+          </button> : null}
           <DeleteActionButton
             label="刪除安排"
             pendingLabel="刪除中..."
@@ -762,17 +765,19 @@ function DailyAssignmentSummaryCard({
   assignment,
   onViewDetail,
   athleteId,
+  scheduleApiBase,
   onUpdated,
 }: {
   assignment: AssignmentDetail
   onViewDetail: (assignmentId: string) => void
   athleteId: number
+  scheduleApiBase: string
   onUpdated: (schedule: AthleteScheduleBundle, message?: string) => void
 }) {
   const [error, setError] = useState<string | null>(null)
 
   async function handleDelete() {
-    const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/assignments/${assignment.record_id}`, {
+    const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`${scheduleApiBase}/assignments/${assignment.record_id}`, {
       method: 'DELETE',
     })
     onUpdated(payload.schedule, payload.message)
@@ -815,16 +820,18 @@ function DailyAssignmentSummaryCard({
 function DailyEventSummaryCard({
   event,
   athleteId,
+  scheduleApiBase,
   onUpdated,
 }: {
   event: GeneralEventDetail
   athleteId: number
+  scheduleApiBase: string
   onUpdated: (schedule: AthleteScheduleBundle, message?: string) => void
 }) {
   const [error, setError] = useState<string | null>(null)
 
   async function handleDelete() {
-    const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/events/${event.record_id}`, {
+    const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`${scheduleApiBase}/events/${event.record_id}`, {
       method: 'DELETE',
     })
     onUpdated(payload.schedule, payload.message)
@@ -854,7 +861,7 @@ function DailyEventSummaryCard({
   )
 }
 
-function EventCard({ event, onUpdated, athleteId }: { event: GeneralEventDetail; athleteId: number; onUpdated: (schedule: AthleteScheduleBundle, message?: string) => void }) {
+function EventCard({ event, onUpdated, athleteId, scheduleApiBase }: { event: GeneralEventDetail; athleteId: number; scheduleApiBase: string; onUpdated: (schedule: AthleteScheduleBundle, message?: string) => void }) {
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -868,7 +875,7 @@ function EventCard({ event, onUpdated, athleteId }: { event: GeneralEventDetail;
     setIsSaving(true)
     setError(null)
     try {
-      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/events/${event.record_id}`, {
+      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`${scheduleApiBase}/events/${event.record_id}`, {
         method: 'PUT',
         body: JSON.stringify({ title, event_type: eventType, start_date: startDate, end_date: endDate, notes }),
       })
@@ -882,7 +889,7 @@ function EventCard({ event, onUpdated, athleteId }: { event: GeneralEventDetail;
   }
 
   async function handleDelete() {
-    const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/events/${event.record_id}`, { method: 'DELETE' })
+    const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`${scheduleApiBase}/events/${event.record_id}`, { method: 'DELETE' })
     onUpdated(payload.schedule, payload.message)
   }
 
@@ -951,7 +958,7 @@ function EventCard({ event, onUpdated, athleteId }: { event: GeneralEventDetail;
   )
 }
 
-export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxonomy }: CoachScheduleManagerProps) {
+export function CoachScheduleManager({ athleteId, scheduleApiBase = `/api/coach/athletes/${athleteId}`, allowAssignmentContentEditing = true, initialSchedule, blocks, taxonomy }: CoachScheduleManagerProps) {
   const initialDate = todayIso()
   const initialSportId = getInitialSportId(taxonomy)
   const initialAgeGroupId = getInitialAgeGroupId(taxonomy, initialSportId)
@@ -1175,7 +1182,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
       try {
         let latestSchedule = schedule
         for (const marker of legacyMarkers) {
-          const payload = await requestJson<{ schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/week-markers`, {
+          const payload = await requestJson<{ schedule: AthleteScheduleBundle }>(`${scheduleApiBase}/week-markers`, {
             method: 'POST',
             body: JSON.stringify({
               start_date: marker.startDate,
@@ -1232,7 +1239,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
 
     setIsSavingWeekMarker(true)
     try {
-      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/week-markers`, {
+      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`${scheduleApiBase}/week-markers`, {
         method: 'POST',
         body: JSON.stringify({
           start_date: normalized.startDate,
@@ -1266,7 +1273,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
 
     setIsSavingWeekMarker(true)
     try {
-      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/week-markers/${markerId}`, {
+      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`${scheduleApiBase}/week-markers/${markerId}`, {
         method: 'DELETE',
       })
       applySchedule(payload.schedule, payload.message)
@@ -1300,7 +1307,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
         availableTrainingCategories.find((category) => String(category.id) === effectiveSelectedTrainingCategoryId)?.name ??
         (isUncategorizedSelection ? '未分類' : assignmentForm.trainingCategory)
 
-      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/assignments`, {
+      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`${scheduleApiBase}/assignments`, {
         method: 'POST',
         body: JSON.stringify({
           block_id: Number(effectiveBlockId),
@@ -1333,7 +1340,7 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
     setIsCreatingEvent(true)
     setError(null)
     try {
-      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`/api/coach/athletes/${athleteId}/events`, {
+      const payload = await requestJson<{ message?: string; schedule: AthleteScheduleBundle }>(`${scheduleApiBase}/events`, {
         method: 'POST',
         body: JSON.stringify({
           title: eventForm.title,
@@ -1738,10 +1745,10 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
               ) : (
                 <div className="space-y-4">
                   {selectedDateAssignments.map((assignment) => (
-                    <DailyAssignmentSummaryCard key={assignment.id} assignment={assignment} athleteId={athleteId} onUpdated={applySchedule} onViewDetail={jumpToDetail} />
+                    <DailyAssignmentSummaryCard key={assignment.id} assignment={assignment} athleteId={athleteId} scheduleApiBase={scheduleApiBase} onUpdated={applySchedule} onViewDetail={jumpToDetail} />
                   ))}
                   {selectedDateEvents.map((event) => (
-                    <DailyEventSummaryCard key={event.id} event={event} athleteId={athleteId} onUpdated={applySchedule} />
+                    <DailyEventSummaryCard key={event.id} event={event} athleteId={athleteId} scheduleApiBase={scheduleApiBase} onUpdated={applySchedule} />
                   ))}
                 </div>
               )}
@@ -1771,11 +1778,11 @@ export function CoachScheduleManager({ athleteId, initialSchedule, blocks, taxon
           <div className="space-y-4">
             {selectedDateAssignments.map((assignment) => (
               <div key={assignment.id} id={`assignment-detail-${assignment.id}`}>
-                <AssignmentCard assignment={assignment} athleteId={athleteId} onUpdated={applySchedule} />
+                <AssignmentCard assignment={assignment} athleteId={athleteId} scheduleApiBase={scheduleApiBase} allowAssignmentContentEditing={allowAssignmentContentEditing} onUpdated={applySchedule} />
               </div>
             ))}
             {selectedDateEvents.map((event) => (
-              <EventCard key={event.id} event={event} athleteId={athleteId} onUpdated={applySchedule} />
+              <EventCard key={event.id} event={event} athleteId={athleteId} scheduleApiBase={scheduleApiBase} onUpdated={applySchedule} />
             ))}
           </div>
         )}

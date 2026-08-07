@@ -50,7 +50,7 @@ type CoachDeleteDialogState = {
 
 type AuthAccountStatus = 'created' | 'reused'
 
-type TemporaryCredentialDialogState = {
+export type TemporaryCredentialDialogState = {
   title: string
   email: string
   temporaryPassword?: string | null
@@ -87,7 +87,7 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit) {
   return (payload ?? {}) as ApiSuccess<T>
 }
 
-function TemporaryCredentialDialog({
+export function TemporaryCredentialDialog({
   state,
   onClose,
 }: {

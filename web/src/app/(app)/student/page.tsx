@@ -5,6 +5,7 @@ import { StudentCalendarPreview } from '@/components/schedule/student-report-sch
 import { StudentDashboardHeader } from '@/components/student/student-dashboard-header'
 import { requireStudentAccess } from '@/lib/auth/roles'
 import { getStudentDashboardSummary } from '@/services/schedule'
+import { getStudentTeamDashboardSummary, getStudentTeamScheduleBundle } from '@/services/team-training'
 
 export default async function StudentHomePage() {
   const context = await requireStudentAccess('/student/login')
@@ -56,7 +57,9 @@ export default async function StudentHomePage() {
     )
   }
 
-  const summary = await getStudentDashboardSummary(studentProfile.id)
+  const teamSchedule = await getStudentTeamScheduleBundle(studentProfile.id)
+  const isTeamAthlete = teamSchedule.assignments.length > 0
+  const summary = isTeamAthlete ? getStudentTeamDashboardSummary(teamSchedule) : await getStudentDashboardSummary(studentProfile.id)
 
   return (
     <AppShell

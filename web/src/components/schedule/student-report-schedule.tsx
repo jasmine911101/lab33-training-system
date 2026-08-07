@@ -32,17 +32,21 @@ type CalendarCell = {
 }
 
 const WEEK_MARKER_COLORS = [
-  { key: 'sky', badgeClass: 'lab-week-sky-badge', chipClass: 'lab-week-sky-chip' },
-  { key: 'emerald', badgeClass: 'lab-week-emerald-badge', chipClass: 'lab-week-emerald-chip' },
-  { key: 'amber', badgeClass: 'lab-week-amber-badge', chipClass: 'lab-week-amber-chip' },
-  { key: 'violet', badgeClass: 'lab-week-violet-badge', chipClass: 'lab-week-violet-chip' },
-  { key: 'rose', badgeClass: 'lab-week-rose-badge', chipClass: 'lab-week-rose-chip' },
-  { key: 'slate', badgeClass: 'lab-week-slate-badge', chipClass: 'lab-week-slate-chip' },
+  { key: 'sky', name: '藍色', badgeClass: 'lab-week-sky-badge', chipClass: 'lab-week-sky-chip' },
+  { key: 'emerald', name: '綠色', badgeClass: 'lab-week-emerald-badge', chipClass: 'lab-week-emerald-chip' },
+  { key: 'amber', name: '橘色', badgeClass: 'lab-week-amber-badge', chipClass: 'lab-week-amber-chip' },
+  { key: 'violet', name: '紫色', badgeClass: 'lab-week-violet-badge', chipClass: 'lab-week-violet-chip' },
+  { key: 'rose', name: '粉色', badgeClass: 'lab-week-rose-badge', chipClass: 'lab-week-rose-chip' },
+  { key: 'slate', name: '灰色', badgeClass: 'lab-week-slate-badge', chipClass: 'lab-week-slate-chip' },
 ] as const
 
 type StudentReportScheduleProps = {
   schedule: AthleteScheduleBundle
   emptyMessage: string
+  reportApiBase?: string
+  title?: string
+  allowPersonalEvents?: boolean
+  showWeekMarkerPanel?: boolean
 }
 
 type StudentCalendarPreviewProps = {
@@ -519,10 +523,12 @@ function StudentAssignmentCard({
   assignment,
   onSaved,
   forceOpen = false,
+  reportApiBase = '/api/student/assignments',
 }: {
   assignment: AssignmentDetail
   onSaved: (assignmentId: number, sections: AssignmentDetail['sections']) => void
   forceOpen?: boolean
+  reportApiBase?: string
 }) {
   const [sections, setSections] = useState(() => copySections(assignment))
   const [isOpen, setIsOpen] = useState(forceOpen)
@@ -580,7 +586,7 @@ function StudentAssignmentCard({
     setError(null)
 
     try {
-      const response = await fetch(`/api/student/assignments/${assignment.record_id}/report`, {
+      const response = await fetch(`${reportApiBase}/${assignment.record_id}/report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1001,7 +1007,7 @@ export function StudentCalendarPreview({ summary, href }: StudentCalendarPreview
   )
 }
 
-export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportScheduleProps) {
+export function StudentReportSchedule({ schedule, emptyMessage, reportApiBase, title = '我的完整行事曆', allowPersonalEvents = true, showWeekMarkerPanel = false }: StudentReportScheduleProps) {
   const initialDate = todayIso()
   const [scheduleState, setScheduleState] = useState(schedule)
   const [selectedDate, setSelectedDate] = useState(initialDate)
@@ -1031,6 +1037,7 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
     () => resolveWeekMarkers(selectedDate, scheduleState.weekMarkers),
     [scheduleState.weekMarkers, selectedDate],
   )
+  const primaryWeekMarker = selectedDateWeekMarkers[0] ?? null
   const weekMarkerLanes = useMemo(() => getWeekMarkerLanes(scheduleState.weekMarkers), [scheduleState.weekMarkers])
   const maxWeekMarkerLane = useMemo(
     () => Math.max(-1, ...Array.from(weekMarkerLanes.values())),
@@ -1125,7 +1132,7 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
         <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="lab-eyebrow">Calendar Planner</p>
-            <h2 className="lab-section-title mt-3">我的完整行事曆</h2>
+            <h2 className="lab-section-title mt-3">{title}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="lab-badge bg-white/90 text-slate-900">已選日期：{selectedDate}</span>
@@ -1134,6 +1141,25 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
         </div>
 
         <p className="lab-copy mt-5 px-1">用和教練端一致的月曆方式查看課表與一般事件，日期內容過多時可打開當日摘要框。</p>
+
+        {showWeekMarkerPanel ? (
+          <section className="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
+            <div className="rounded-[1.25rem] border border-slate-200 bg-white p-5 sm:p-6">
+              <p className="lab-eyebrow">Calendar Week Marker</p>
+              <h3 className="mt-3 text-xl font-bold text-slate-900">行事曆週期標示</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">週期由教練統一設定，團隊成員可在行事曆中查看所屬 Week。</p>
+              <p className="mt-3 text-sm font-semibold text-slate-600">已選週期範圍：{primaryWeekMarker ? `${primaryWeekMarker.startDate} ～ ${primaryWeekMarker.endDate}` : '尚未設定週期'}</p>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_0.6fr_1.8fr_auto]">
+                <label className="grid gap-2 text-sm font-semibold text-slate-700">開始日期<input readOnly className="lab-input" value={primaryWeekMarker?.startDate ?? selectedDate} /></label>
+                <label className="grid gap-2 text-sm font-semibold text-slate-700">結束日期<input readOnly className="lab-input" value={primaryWeekMarker?.endDate ?? selectedDate} /></label>
+                <label className="grid gap-2 text-sm font-semibold text-slate-700">Week<input readOnly className="lab-input" value={primaryWeekMarker?.weekNum ?? '1'} /></label>
+                <label className="grid gap-2 text-sm font-semibold text-slate-700">備註<input readOnly className="lab-input" value={primaryWeekMarker?.note ?? '尚未設定'} /></label>
+                <div className="flex items-end"><span className="lab-btn-secondary w-full !cursor-default !opacity-70">教練設定</span></div>
+              </div>
+              <div className="mt-5"><p className="text-sm font-semibold text-slate-700">週期顏色</p><div className="mt-3 flex flex-wrap gap-2">{WEEK_MARKER_COLORS.map((color) => <span key={color.key} className={`lab-badge ${color.chipClass} ${primaryWeekMarker?.colorKey === color.key ? 'ring-2 ring-slate-500 ring-offset-2' : ''}`}>{color.name}{primaryWeekMarker?.colorKey === color.key ? ' ✓' : ''}</span>)}</div></div>
+            </div>
+          </section>
+        ) : null}
 
         <div className="mt-6">
           <CalendarMonthGrid
@@ -1172,7 +1198,7 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
           <div className="mt-6 space-y-4">
             {selectedDateAssignments.map((assignment) => (
               <div key={assignment.id} id={`student-assignment-detail-${assignment.id}`}>
-                <StudentAssignmentCard assignment={assignment} onSaved={updateAssignmentRows} forceOpen={highlightedAssignmentId === assignment.id} />
+                <StudentAssignmentCard assignment={assignment} onSaved={updateAssignmentRows} forceOpen={highlightedAssignmentId === assignment.id} reportApiBase={reportApiBase} />
               </div>
             ))}
             {selectedDateEvents.map((event) => (
@@ -1186,7 +1212,7 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
           </div>
         </article>
 
-        <article className="lab-card overflow-hidden p-7 sm:p-8">
+        {allowPersonalEvents ? <article className="lab-card overflow-hidden p-7 sm:p-8">
           <div className="lab-section-heading lab-section-heading-flush !p-0">
             <button
               type="button"
@@ -1240,7 +1266,7 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
 
           {error ? <p className="mt-5 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
           {message ? <p className="mt-5 rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</p> : null}
-        </article>
+        </article> : null}
       </section>
 
       {isDayModalOpen ? (

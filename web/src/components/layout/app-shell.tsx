@@ -26,6 +26,7 @@ function getNavItems(role: Exclude<AppRole, 'unknown'>): NavItem[] {
   if (role === 'coach') {
     return [
       { href: '/coach', label: '學員管理', shortLabel: '學員', icon: 'A' },
+      { href: '/coach/teams', label: '團隊課表', shortLabel: '團隊', icon: 'T' },
       { href: '/coach/blocks', label: '板塊管理', shortLabel: '板塊', icon: 'B' },
       { href: '/coach/qa', label: 'Q&A 庫', shortLabel: 'Q&A', icon: 'Q' },
       { href: '/', label: '網站首頁', shortLabel: '首頁', icon: 'L' },

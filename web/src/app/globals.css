@@ -301,7 +301,7 @@ a {
   }
 
   .lab-shell-sidebar {
-    @apply hidden lg:sticky lg:top-6 lg:flex lg:h-[calc(100vh-3rem)] lg:flex-col lg:gap-6;
+    @apply hidden lg:sticky lg:top-6 lg:flex lg:h-[calc(100vh-3rem)] lg:flex-col lg:gap-6 lg:overflow-y-auto lg:overscroll-contain lg:pr-1;
   }
 
   .lab-shell-panel {
