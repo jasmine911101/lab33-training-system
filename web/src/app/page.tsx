@@ -18,7 +18,7 @@ export default async function HomePage() {
               <BrandLogo className="w-52 sm:w-64" priority />
               <div className="flex flex-wrap gap-3">
                 {user ? (
-                  <Link href={signedInHref} className="lab-btn-primary">
+                  <Link href={signedInHref} className="lab-btn-primary !text-white">
                     前往我的 Dashboard
                   </Link>
                 ) : (

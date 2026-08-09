@@ -418,6 +418,22 @@ function mergeTemplateVideoFallback(
   })
 }
 
+function orderSectionsByTemplate(
+  assignmentSections: ExerciseSection[],
+  templateSections: ExerciseSection[],
+): ExerciseSection[] {
+  const templateOrder = new Map(templateSections.map((section, index) => [section.name, index]))
+
+  return assignmentSections
+    .map((section, index) => ({ section, index }))
+    .sort((a, b) => {
+      const aOrder = templateOrder.get(a.section.name) ?? Number.MAX_SAFE_INTEGER
+      const bOrder = templateOrder.get(b.section.name) ?? Number.MAX_SAFE_INTEGER
+      return aOrder - bOrder || a.index - b.index
+    })
+    .map(({ section }) => section)
+}
+
 async function buildSectionsFromTemplate(blockId: number): Promise<ExerciseSection[]> {
   const [sections, exercises] = await Promise.all([fetchBlockSections(blockId), fetchBlockExercises(blockId)])
   if (exercises.length === 0) return []
@@ -485,7 +501,7 @@ async function buildAssignmentDetail(
 
     if (assignmentRows.length > 0 && row.block_id) {
       const templateSections = await buildSectionsFromTemplate(row.block_id)
-      sections = mergeTemplateVideoFallback(sections, templateSections)
+      sections = mergeTemplateVideoFallback(orderSectionsByTemplate(sections, templateSections), templateSections)
     }
   } else {
     sections = await buildSectionsFromTemplate(row.block_id)

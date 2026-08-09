@@ -11,8 +11,8 @@ type TeamRow = { id: number; name: string; description: string; created_by_coach
 type MembershipRow = { id: number; team_id: number; athlete_id: number; is_active: boolean }
 type AssignmentRow = { id: number; team_id: number; block_id: number; title: string; start_date: string; end_date: string; notes: string }
 type MembershipWithTeamRow = { team_id: number; shared_training_teams: { id: number; name: string | null }[] | null }
-type ExerciseRow = { id: number; block_id: number; section_id: number | null; exercise_name: string | null; sets: string | null; reps_or_time: string | null; intensity: string | null; weight: string | null; rest: string | null; notes: string | null }
-type SectionRow = { id: number; section_name: string | null }
+type ExerciseRow = { id: number; block_id: number; section_id: number | null; exercise_name: string | null; sets: string | null; reps_or_time: string | null; intensity: string | null; weight: string | null; rest: string | null; notes: string | null; order_num: number | null }
+type SectionRow = { id: number; section_name: string | null; order_num: number | null }
 type ReportRow = { team_assignment_id: number; block_exercise_id: number; actual_sets: string | null; actual_weight: string | null }
 type TeamScheduleAssignmentRow = { id: number; block_id: number; title: string | null; start_date: string | null; end_date: string | null; notes: string | null; week_num?: number | null; day_num?: number | null; training_category?: string | null }
 type TeamScheduleMarkerRow = { id: number; start_date: string | null; end_date: string | null; week_num: number | null; note: string | null; color_key: string | null }
@@ -21,7 +21,7 @@ type TeamSectionRow = { id: number; section_name: string | null; order_num: numb
 type TeamBlockExerciseRow = { id: number; section_id: number | null; exercise_name: string | null; sets: string | null; reps_or_time: string | null; equipment: string | null; intensity: string | null; weight: string | null; rest: string | null; video_url: string | null; notes: string | null }
 type SchedulePayload = Record<string, unknown>
 
-export type TeamExercise = { id: number; exercise_name: string; sets: string; reps_or_time: string; intensity: string; weight: string; rest: string; notes: string; section_name: string; actual_sets: string; actual_weight: string }
+export type TeamExercise = { id: number; exercise_name: string; sets: string; reps_or_time: string; intensity: string; weight: string; rest: string; notes: string; section_name: string; section_order: number; order_num: number; actual_sets: string; actual_weight: string }
 export type StudentTeamAssignment = { id: number; teamId: number; teamName: string; title: string; blockName: string; blockCode: string; startDate: string; endDate: string; notes: string; exercises: TeamExercise[] }
 export type CoachTeamAssignment = { id: number; title: string; startDate: string; endDate: string; notes: string; blockId: number }
 export type TeamWeekMarker = { id: number; startDate: string; endDate: string; weekNum: number; note: string; colorKey: string }
@@ -326,18 +326,38 @@ export async function updateTeamScheduleAssignmentContent(coach: CoachProfile, t
   const supabase = await admin()
   const { data: assignment, error: assignmentError } = await supabase.from('shared_training_assignments').select('id, block_id').eq('id', assignmentId).eq('team_id', teamId).maybeSingle()
   if (assignmentError || !assignment) return { error: '找不到這筆團隊課表。' }
-  const { error: deleteError } = await supabase.from('block_exercises').delete().eq('block_id', assignment.block_id)
+  const copyCode = `TEAM-${teamId}-${assignmentId}`
+  const { data: currentBlock, error: blockError } = await supabase.from('blocks').select('id, block_code, block_name, goal, training_element, description, training_category_id').eq('id', assignment.block_id).maybeSingle()
+  if (blockError || !currentBlock) return { error: '找不到原始訓練板塊。' }
+
+  let editableBlockId = Number(currentBlock.id)
+  if (currentBlock.block_code !== copyCode) {
+    const { data: copiedBlock, error: copyBlockError } = await supabase.from('blocks').insert({
+      block_code: copyCode,
+      block_name: currentBlock.block_name,
+      goal: currentBlock.goal,
+      training_element: currentBlock.training_element,
+      description: currentBlock.description,
+      training_category_id: currentBlock.training_category_id,
+    }).select('id').single()
+    if (copyBlockError || !copiedBlock) return { error: copyBlockError?.message ?? '建立團隊課表副本失敗。' }
+    editableBlockId = Number(copiedBlock.id)
+    const { error: assignmentUpdateError } = await supabase.from('shared_training_assignments').update({ block_id: editableBlockId }).eq('id', assignmentId).eq('team_id', teamId)
+    if (assignmentUpdateError) return { error: assignmentUpdateError.message }
+  }
+
+  const { error: deleteError } = await supabase.from('block_exercises').delete().eq('block_id', editableBlockId)
   if (deleteError) return { error: deleteError.message }
-  const { error: sectionDeleteError } = await supabase.from('block_sections').delete().eq('block_id', assignment.block_id)
+  const { error: sectionDeleteError } = await supabase.from('block_sections').delete().eq('block_id', editableBlockId)
   if (sectionDeleteError) return { error: sectionDeleteError.message }
   for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex += 1) {
     const section = sections[sectionIndex]
-    const { data: savedSection, error: sectionError } = await supabase.from('block_sections').insert({ block_id: assignment.block_id, section_name: text(section.name) || '訓練內容', order_num: sectionIndex + 1 }).select('id').single()
+    const { data: savedSection, error: sectionError } = await supabase.from('block_sections').insert({ block_id: editableBlockId, section_name: text(section.name) || '訓練內容', order_num: sectionIndex + 1 }).select('id').single()
     if (sectionError) return { error: sectionError.message }
     for (let rowIndex = 0; rowIndex < (section.rows ?? []).length; rowIndex += 1) {
       const row = section.rows?.[rowIndex] ?? {}
       if (!text(row.exercise_name)) continue
-      const { error } = await supabase.from('block_exercises').insert({ block_id: assignment.block_id, section_id: savedSection.id, exercise_name: text(row.exercise_name), sets: text(row.sets), reps_or_time: text(row.reps_or_time), equipment: text(row.equipment), intensity: text(row.intensity), weight: text(row.weight), rest: text(row.rest), video_url: text(row.video_url), notes: text(row.notes), order_num: rowIndex + 1 })
+      const { error } = await supabase.from('block_exercises').insert({ block_id: editableBlockId, section_id: savedSection.id, exercise_name: text(row.exercise_name), sets: text(row.sets), reps_or_time: text(row.reps_or_time), equipment: text(row.equipment), intensity: text(row.intensity), weight: text(row.weight), rest: text(row.rest), video_url: text(row.video_url), notes: text(row.notes), order_num: rowIndex + 1 })
       if (error) return { error: error.message }
     }
   }
@@ -374,8 +394,8 @@ export async function getStudentTeamAssignments(athleteId: number): Promise<Stud
   if (exerciseError) throw exerciseError
   const exerciseRows = (exercises ?? []) as ExerciseRow[]
   const sectionIds = [...new Set(exerciseRows.map((row) => Number(row.section_id)).filter(Number.isFinite))]
-  const { data: sections } = sectionIds.length ? await supabase.from('block_sections').select('id, section_name').in('id', sectionIds) : { data: [] }
-  const sectionNames = new Map(((sections ?? []) as SectionRow[]).map((row) => [Number(row.id), text(row.section_name)]))
+  const { data: sections } = sectionIds.length ? await supabase.from('block_sections').select('id, section_name, order_num').in('id', sectionIds).order('order_num', { ascending: true }) : { data: [] }
+  const sectionsById = new Map(((sections ?? []) as SectionRow[]).map((row) => [Number(row.id), row]))
   const assignmentIds = rows.map((row) => row.id)
   const { data: reports, error: reportError } = assignmentIds.length ? await supabase.from('shared_training_exercise_reports').select('team_assignment_id, block_exercise_id, actual_sets, actual_weight').eq('athlete_id', athleteId).in('team_assignment_id', assignmentIds) : { data: [], error: null }
   if (reportError) throw reportError
@@ -394,7 +414,8 @@ export async function getStudentTeamAssignments(athleteId: number): Promise<Stud
       notes: assignment.notes,
       exercises: exerciseRows.filter((exercise) => Number(exercise.block_id) === assignment.block_id).map((exercise) => {
         const report = reportMap.get(`${assignment.id}:${exercise.id}`)
-        return { id: Number(exercise.id), exercise_name: text(exercise.exercise_name), sets: text(exercise.sets), reps_or_time: text(exercise.reps_or_time), intensity: text(exercise.intensity), weight: text(exercise.weight), rest: text(exercise.rest), notes: text(exercise.notes), section_name: sectionNames.get(Number(exercise.section_id)) || '訓練內容', actual_sets: text(report?.actual_sets), actual_weight: text(report?.actual_weight) }
+        const section = sectionsById.get(Number(exercise.section_id))
+        return { id: Number(exercise.id), exercise_name: text(exercise.exercise_name), sets: text(exercise.sets), reps_or_time: text(exercise.reps_or_time), intensity: text(exercise.intensity), weight: text(exercise.weight), rest: text(exercise.rest), notes: text(exercise.notes), section_name: text(section?.section_name) || '訓練內容', section_order: Number(section?.order_num ?? Number.MAX_SAFE_INTEGER), order_num: Number(exercise.order_num ?? Number.MAX_SAFE_INTEGER), actual_sets: text(report?.actual_sets), actual_weight: text(report?.actual_weight) }
       }),
     }
   })
@@ -411,10 +432,12 @@ export async function getStudentTeamScheduleBundle(athleteId: number): Promise<A
 
   return {
     assignments: assignments.map((assignment) => {
-      const sectionMap = new Map<string, TeamExercise[]>()
+      const sectionMap = new Map<string, { order: number; rows: TeamExercise[] }>()
       for (const exercise of assignment.exercises) {
         const sectionName = exercise.section_name || '訓練內容'
-        sectionMap.set(sectionName, [...(sectionMap.get(sectionName) ?? []), exercise])
+        const section = sectionMap.get(sectionName) ?? { order: exercise.section_order, rows: [] }
+        section.rows.push(exercise)
+        sectionMap.set(sectionName, section)
       }
       return {
         id: `team-assignment-${assignment.id}`,
@@ -441,9 +464,13 @@ export async function getStudentTeamScheduleBundle(athleteId: number): Promise<A
         training_element: '',
         description: '',
         coach_notes: assignment.notes,
-        sections: [...sectionMap.entries()].map(([name, rows]) => ({
+        sections: [...sectionMap.entries()]
+          .sort((a, b) => a[1].order - b[1].order)
+          .map(([name, section]) => ({
           name,
-          rows: rows.map((row) => ({ id: String(row.id), exercise_name: row.exercise_name, sets: row.sets, reps_or_time: row.reps_or_time, equipment: '', intensity: row.intensity, weight: row.weight, actual_sets: row.actual_sets, actual_weight: row.actual_weight, rest: row.rest, video_url: '', notes: row.notes, can_report: true })),
+          rows: section.rows
+            .sort((a, b) => a.order_num - b.order_num)
+            .map((row) => ({ id: String(row.id), exercise_name: row.exercise_name, sets: row.sets, reps_or_time: row.reps_or_time, equipment: '', intensity: row.intensity, weight: row.weight, actual_sets: row.actual_sets, actual_weight: row.actual_weight, rest: row.rest, video_url: '', notes: row.notes, can_report: true })),
         })),
         empty_message: '這份團隊課表目前沒有動作內容。',
       }
