@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { GENERAL_EVENT_TYPES } from '@/lib/types/schedule-management'
 import { normalizeExternalUrl } from '@/lib/external-url'
@@ -430,7 +431,8 @@ function StudentPreviewAssignmentCard({
         </button>
       </article>
 
-      {isOpen ? (
+      {isOpen && typeof document !== 'undefined'
+        ? createPortal(
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setIsOpen(false)}>
           <div
             className="relative flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.2)]"
@@ -507,14 +509,16 @@ function StudentPreviewAssignmentCard({
                 <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setIsOpen(false)}>
                   關閉
                 </button>
-                <Link href={href} className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" onClick={() => setIsOpen(false)}>
+                <Link href={href} className="lab-btn-primary !min-h-10 px-4 py-2 text-sm !text-white" onClick={() => setIsOpen(false)}>
                   前往完整行事曆回報
                 </Link>
               </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        </div>,
+        document.body,
+      )
+        : null}
     </>
   )
 }

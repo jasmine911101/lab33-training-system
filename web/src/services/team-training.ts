@@ -314,6 +314,35 @@ export async function createTeamScheduleAssignment(coach: CoachProfile, teamId: 
   }, '已新增團隊共享課表。')
 }
 export async function deleteTeamScheduleAssignment(coach: CoachProfile, teamId: number, id: number) { const supabase = await admin(); return teamMutation(coach, teamId, async () => supabase.from('shared_training_assignments').delete().eq('id', id).eq('team_id', teamId), '已刪除團隊共享課表。') }
+export async function updateTeamScheduleAssignment(coach: CoachProfile, teamId: number, id: number, payload: SchedulePayload) {
+  const supabase = await admin()
+  const startDate = text(payload.start_date)
+  const endDate = text(payload.end_date)
+  if (!startDate || !endDate || endDate < startDate) return { error: '請輸入有效的開始與結束日期。' }
+  return teamMutation(coach, teamId, async () => supabase.from('shared_training_assignments').update({ title: text(payload.event_name), start_date: startDate, end_date: endDate, week_num: Number(payload.week_num || 1), day_num: Number(payload.day_num || 1), training_category: text(payload.training_category), notes: text(payload.notes) }).eq('id', id).eq('team_id', teamId), '已更新團隊課表安排。')
+}
+export async function updateTeamScheduleAssignmentContent(coach: CoachProfile, teamId: number, assignmentId: number, sections: Array<{ name?: unknown; rows?: Array<Record<string, unknown>> }>) {
+  if (!await managedTeam(coach, teamId)) return { error: '找不到可管理的團隊。' }
+  const supabase = await admin()
+  const { data: assignment, error: assignmentError } = await supabase.from('shared_training_assignments').select('id, block_id').eq('id', assignmentId).eq('team_id', teamId).maybeSingle()
+  if (assignmentError || !assignment) return { error: '找不到這筆團隊課表。' }
+  const { error: deleteError } = await supabase.from('block_exercises').delete().eq('block_id', assignment.block_id)
+  if (deleteError) return { error: deleteError.message }
+  const { error: sectionDeleteError } = await supabase.from('block_sections').delete().eq('block_id', assignment.block_id)
+  if (sectionDeleteError) return { error: sectionDeleteError.message }
+  for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex += 1) {
+    const section = sections[sectionIndex]
+    const { data: savedSection, error: sectionError } = await supabase.from('block_sections').insert({ block_id: assignment.block_id, section_name: text(section.name) || '訓練內容', order_num: sectionIndex + 1 }).select('id').single()
+    if (sectionError) return { error: sectionError.message }
+    for (let rowIndex = 0; rowIndex < (section.rows ?? []).length; rowIndex += 1) {
+      const row = section.rows?.[rowIndex] ?? {}
+      if (!text(row.exercise_name)) continue
+      const { error } = await supabase.from('block_exercises').insert({ block_id: assignment.block_id, section_id: savedSection.id, exercise_name: text(row.exercise_name), sets: text(row.sets), reps_or_time: text(row.reps_or_time), equipment: text(row.equipment), intensity: text(row.intensity), weight: text(row.weight), rest: text(row.rest), video_url: text(row.video_url), notes: text(row.notes), order_num: rowIndex + 1 })
+      if (error) return { error: error.message }
+    }
+  }
+  return { message: '已更新團隊課表內容。', schedule: await getTeamScheduleBundle(teamId) }
+}
 export async function createTeamScheduleWeekMarker(coach: CoachProfile, teamId: number, payload: SchedulePayload) { const supabase = await admin(); return teamMutation(coach, teamId, async () => supabase.from('shared_training_week_markers').insert({ team_id: teamId, created_by_coach_id: coach.id, start_date: text(payload.start_date), end_date: text(payload.end_date), week_num: Number(payload.week_num), note: text(payload.note), color_key: text(payload.color_key) || 'sky' }), '已套用團隊週期。') }
 export async function deleteTeamScheduleWeekMarker(coach: CoachProfile, teamId: number, id: number) { const supabase = await admin(); return teamMutation(coach, teamId, async () => supabase.from('shared_training_week_markers').delete().eq('id', id).eq('team_id', teamId), '已刪除團隊週期。') }
 export async function createTeamScheduleEvent(coach: CoachProfile, teamId: number, payload: SchedulePayload) { const supabase = await admin(); return teamMutation(coach, teamId, async () => supabase.from('shared_training_events').insert({ team_id: teamId, created_by_coach_id: coach.id, title: text(payload.title) || text(payload.event_type), event_type: text(payload.event_type), start_date: text(payload.start_date), end_date: text(payload.end_date), notes: text(payload.notes) }), '已新增團隊一般事件。') }

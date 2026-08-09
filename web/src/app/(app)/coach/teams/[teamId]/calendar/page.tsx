@@ -24,7 +24,7 @@ export default async function CoachTeamCalendarPage({ params }: { params: Promis
       <CoachScheduleManager
         athleteId={data.team.id}
         scheduleApiBase={`/api/coach/teams/${data.team.id}`}
-        allowAssignmentContentEditing={false}
+        allowAssignmentContentEditing
         initialSchedule={data.schedule}
         blocks={data.blocks}
         taxonomy={data.taxonomy}

@@ -23,7 +23,7 @@ export default async function HomePage() {
                   </Link>
                 ) : (
                   <>
-                    <Link href="/coach/login" className="lab-btn-primary">
+                    <Link href="/coach/login" className="lab-btn-primary !text-white">
                       教練端登入
                     </Link>
                     <Link href="/student/login" className="lab-btn-secondary">
