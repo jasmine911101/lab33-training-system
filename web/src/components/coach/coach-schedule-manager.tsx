@@ -383,7 +383,53 @@ function buildEditableSections(assignment: AssignmentDetail): EditableSection[] 
 
 function ExerciseReadTable({ rows }: { rows: AssignmentDetail['sections'][number]['rows'] }) {
   return (
-    <div className="overflow-x-auto">
+    <>
+      <div className="space-y-3 sm:hidden">
+        {rows.map((row, index) => {
+          const videoUrl = normalizeExternalUrl(row.video_url)
+          const hasReportedValue = Boolean(row.actual_sets || row.actual_weight)
+
+          return (
+            <article
+              key={`${row.id || row.exercise_name}-${index}`}
+              className={`rounded-[1.1rem] border p-4 ${hasReportedValue ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-white'}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h5 className="min-w-0 text-base font-bold text-slate-900">{row.exercise_name || '未命名動作'}</h5>
+                {hasReportedValue ? <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">已回報</span> : null}
+              </div>
+
+              <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                <DetailMeta label="組數" value={row.sets || '-'} />
+                <DetailMeta label="次數 / 時間" value={row.reps_or_time || '-'} />
+                <DetailMeta label="強度" value={row.intensity || '-'} />
+                <DetailMeta label="重量" value={row.weight || '-'} />
+                <DetailMeta label="休息" value={row.rest || '-'} />
+                <DetailMeta label="工具" value={row.equipment || '-'} />
+              </dl>
+
+              {row.actual_sets || row.actual_weight ? (
+                <div className="mt-4 rounded-xl bg-white/80 px-3 py-3 text-sm text-slate-700">
+                  <p className="font-semibold text-emerald-800">學員回報</p>
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                    {row.actual_sets ? <span>組數：{row.actual_sets}</span> : null}
+                    {row.actual_weight ? <span>重量：{row.actual_weight}</span> : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {row.notes ? <p className="mt-4 border-t border-slate-200 pt-3 text-sm leading-6 text-slate-600">備註：{row.notes}</p> : null}
+              {videoUrl ? (
+                <a href={videoUrl} target="_blank" rel="noreferrer" className="lab-btn-secondary mt-4 inline-flex !min-h-9 px-3 py-1.5 text-xs">
+                  查看影片 ↗
+                </a>
+              ) : null}
+            </article>
+          )
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto sm:block">
       <table className="min-w-[1100px] w-full border-separate border-spacing-0 text-sm">
         <thead>
           <tr className="text-left">
@@ -434,7 +480,8 @@ function ExerciseReadTable({ rows }: { rows: AssignmentDetail['sections'][number
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -571,30 +618,35 @@ function AssignmentCard({ assignment, onUpdated, athleteId, scheduleApiBase, all
   }
 
   return (
-    <article className="lab-card p-5 sm:p-6">
+    <article className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <button
           type="button"
-          className="min-w-0 flex-1 text-left"
+          className="min-w-0 flex-1 px-5 py-5 text-left sm:px-6 sm:py-6"
           onClick={() => setIsExpanded((value) => !value)}
         >
-          <p className="lab-eyebrow">Assignment</p>
+          <p className="hidden lab-eyebrow sm:block">Training Assignment</p>
           <div className="mt-3 flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <h3 className="text-2xl font-bold text-slate-900">{resolvedBlockName}</h3>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <h3 className="text-xl font-bold leading-tight text-slate-900 sm:text-2xl">{resolvedBlockName}</h3>
+              <div className="mt-3 flex flex-wrap gap-2 sm:hidden">
+                <CycleBadge weekLabel={assignment.week_label} cycleName={assignment.cycle_name} />
+                <span className="lab-badge bg-sky-100 text-sky-700">{assignment.category_label || '未分類'}</span>
+                <span className="lab-badge bg-slate-100 text-slate-700">{assignment.date_range || '-'}</span>
+              </div>
+              <div className="mt-3 hidden flex-wrap gap-2 sm:flex">
                 <CycleBadge weekLabel={assignment.week_label} cycleName={assignment.cycle_name} />
                 <span className="lab-badge bg-slate-100 text-slate-700">事件：{assignment.event_display_name || '-'}</span>
                 <span className="lab-badge bg-sky-100 text-sky-700">{assignment.category_label}</span>
                 <span className="lab-badge bg-amber-100 text-amber-800">{assignment.block_code || '未設定代號'}</span>
                 <span className="lab-badge bg-slate-100 text-slate-700">{assignment.date_range || '-'}</span>
               </div>
-              <p className="mt-3 text-sm text-slate-600">板塊：{resolvedBlockLabel}</p>
+              <p className="mt-3 hidden text-sm text-slate-600 sm:block">板塊：{resolvedBlockLabel}</p>
             </div>
             <span className="pt-1 text-lg font-semibold text-slate-400">{isExpanded ? '▾' : '▸'}</span>
           </div>
         </button>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 px-5 pb-5 sm:px-6 sm:pt-5 sm:pb-0">
           <span className="lab-badge-primary">課表安排</span>
           {allowAssignmentContentEditing ? <button
             type="button"
@@ -618,7 +670,12 @@ function AssignmentCard({ assignment, onUpdated, athleteId, scheduleApiBase, all
 
       {isExpanded ? (
         <>
-          <dl className="mt-5 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="border-t border-slate-200 px-5 py-5 sm:px-6 sm:py-6">
+          <div className="text-sm leading-6 text-slate-600 sm:hidden">
+            <p>{assignment.event_display_name || resolvedBlockLabel}</p>
+            <p className="mt-1 text-slate-500">{assignment.block_code || '未設定代號'} · {assignment.date_range || '-'}</p>
+          </div>
+          <dl className="mt-5 hidden gap-3 text-sm text-slate-600 sm:grid sm:grid-cols-2 xl:grid-cols-4">
             <DetailMeta label="Week" value={assignment.week_label} />
             <DetailMeta label="事件" value={assignment.event_display_name} />
             <DetailMeta label="分類" value={assignment.category_label} />
@@ -753,10 +810,11 @@ function AssignmentCard({ assignment, onUpdated, athleteId, scheduleApiBase, all
               })}
             </div>
           ) : null}
+          </div>
         </>
       ) : null}
 
-      {error ? <p className="mt-5 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+      {error ? <p className="mx-5 mb-5 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:mx-6 sm:mb-6">{error}</p> : null}
     </article>
   )
 }
@@ -978,6 +1036,7 @@ export function CoachScheduleManager({ athleteId, scheduleApiBase = `/api/coach/
   const [visibleMonth, setVisibleMonth] = useState(initialDate.slice(0, 7))
   const weekMarkers = schedule.weekMarkers
   const [isSavingWeekMarker, setIsSavingWeekMarker] = useState(false)
+  const [isWeekMarkerEditorOpen, setIsWeekMarkerEditorOpen] = useState(false)
   const hasMigratedLegacyWeekMarkers = useRef(false)
   const [weekRangeStartDate, setWeekRangeStartDate] = useState(initialDate)
   const [weekRangeEndDate, setWeekRangeEndDate] = useState(initialDate)
@@ -1363,19 +1422,32 @@ export function CoachScheduleManager({ athleteId, scheduleApiBase = `/api/coach/
 
   return (
     <div className="space-y-6">
-      <article className="lab-card overflow-hidden p-7 sm:p-8">
+      <article className="lab-card overflow-hidden p-4 sm:p-8">
         <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="lab-eyebrow">Calendar Planner</p>
-            <h2 className="lab-section-title mt-3">課表行事曆</h2>
+            <h2 className="lab-section-title mt-2 sm:mt-3">課表行事曆</h2>
           </div>
           <span className="lab-badge bg-white/90 text-slate-900">已選日期：{selectedDate}</span>
         </div>
 
-        <p className="lab-copy mt-5 px-1">先用月曆挑一天，再安排課表或新增一般事件。這裡可建立 / 刪除安排，並直接編輯這次 assignment 的課表內容。</p>
+        <p className="lab-copy mt-5 hidden px-1 sm:block">用和學員端一致的月曆方式查看課表與一般事件；點選日期後可建立、編輯或刪除這位學員的安排。</p>
 
-        <div className="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
-          <div className="mb-5 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4 sm:px-5">
+        <div className="mt-4 space-y-4 sm:mt-6">
+          <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-3 sm:p-5">
+            <button
+              type="button"
+              className="flex min-h-11 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 text-left text-sm font-semibold text-slate-800 transition hover:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 sm:hidden"
+              aria-expanded={isWeekMarkerEditorOpen}
+              aria-controls="coach-week-marker-editor"
+              onClick={() => setIsWeekMarkerEditorOpen((current) => !current)}
+            >
+              <span>週期設定 <span className="ml-1 font-medium text-slate-500">{weekMarkers.length} 組</span></span>
+              <span aria-hidden="true" className="text-slate-500">{isWeekMarkerEditorOpen ? '收合' : '展開'}</span>
+            </button>
+
+            <div id="coach-week-marker-editor" className={`${isWeekMarkerEditorOpen ? 'mt-3 block' : 'hidden'} sm:mt-0 sm:block`}>
+              <div className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4 sm:px-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-slate-900">行事曆週期標示</p>
@@ -1454,24 +1526,28 @@ export function CoachScheduleManager({ athleteId, scheduleApiBase = `/api/coach/
                 ))}
               </div>
             ) : null}
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="-mx-4 sm:mx-0">
+          <div className="border-y border-slate-200 bg-slate-50/80 p-3 sm:rounded-[1.5rem] sm:border sm:p-5">
+          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 sm:flex sm:flex-wrap sm:justify-between sm:gap-3">
             <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setVisibleMonth((current) => shiftMonth(current, -1))}>上個月</button>
             <div className="text-center">
               <h3 className="text-lg font-bold text-slate-900 sm:text-xl">{formatMonthLabel(visibleMonth)}</h3>
-              <p className="mt-1 text-xs text-slate-500">點一天即可預填下方的課表安排與一般事件表單</p>
+              <p className="mt-1 hidden text-xs text-slate-500 sm:block">點一天即可預填下方的課表安排與一般事件表單</p>
             </div>
             <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setVisibleMonth((current) => shiftMonth(current, 1))}>下個月</button>
           </div>
 
-          <div className="mt-5 overflow-x-auto">
-            <div className="min-w-[760px]">
+          <div className="mt-4 overflow-hidden sm:mt-5 sm:overflow-x-auto">
+            <div className="min-w-0 sm:min-w-[760px]">
               <div className="grid gap-px rounded-t-[1.25rem] bg-slate-200" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-                {['一', '二', '三', '四', '五', '六', '日'].map((day) => (
+                {['一', '二', '三', '四', '五', '六', '日'].map((day, index) => (
                   <div
                     key={day}
-                    className="bg-white px-3 py-3 text-center text-xs font-semibold tracking-[0.16em] text-slate-600"
+                    className={`bg-white px-1 py-2 text-center text-[10px] font-semibold tracking-[0.08em] sm:px-3 sm:py-3 sm:text-xs sm:tracking-[0.16em] ${index >= 5 ? 'text-orange-500 sm:text-slate-600' : 'text-slate-500'}`}
                   >
                     {day}
                   </div>
@@ -1495,8 +1571,8 @@ export function CoachScheduleManager({ athleteId, scheduleApiBase = `/api/coach/
                       key={cell.date}
                       type="button"
                       onClick={() => selectDate(cell.date, cell.items.length > 2)}
-                      className={`relative flex min-h-[132px] w-full min-w-0 flex-col bg-white p-3 text-left transition hover:z-10 hover:bg-slate-50 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${isSelected ? 'z-10 bg-slate-50 ring-2 ring-inset ring-slate-900' : ''} ${cell.inCurrentMonth ? 'text-slate-900' : 'text-slate-300'}`}
-                      style={{ minHeight: `${132 + Math.max(0, maxWeekMarkerLane) * 30}px` }}
+                      className={`coach-calendar-cell relative flex w-full min-w-0 flex-col bg-white p-1.5 text-left transition hover:z-10 hover:bg-slate-50 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 sm:p-3 ${isSelected ? 'z-10 bg-sky-50 ring-2 ring-inset ring-sky-400' : ''} ${cell.inCurrentMonth ? 'text-slate-900' : 'text-slate-300'}`}
+                      style={{ '--coach-calendar-week-lanes': `${Math.max(0, maxWeekMarkerLane)}` } as React.CSSProperties}
                     >
                       {cellWeekMarkers.map((weekMarker) => {
                         const lane = weekMarkerLanes.get(getWeekMarkerLaneKey(weekMarker)) ?? 0
@@ -1506,7 +1582,7 @@ export function CoachScheduleManager({ athleteId, scheduleApiBase = `/api/coach/
                         return (
                           <div
                             key={weekMarker.id}
-                            className={`pointer-events-none absolute -left-px -right-px z-0 flex h-7 items-center ${weekColor.badgeClass} ${!previousHasMarker ? 'rounded-l-lg pl-2' : ''} ${!nextHasMarker ? 'rounded-r-lg pr-2' : ''}`}
+                            className={`pointer-events-none absolute -left-px -right-px z-0 hidden h-7 items-center sm:flex ${weekColor.badgeClass} ${!previousHasMarker ? 'rounded-l-lg pl-2' : ''} ${!nextHasMarker ? 'rounded-r-lg pr-2' : ''}`}
                             style={{ top: `${44 + lane * 30}px` }}
                           >
                             {!previousHasMarker ? <span className="min-w-0 truncate text-[11px] font-semibold leading-none">Week {weekMarker.weekNum}{weekMarker.note ? ` · ${weekMarker.note}` : ''}</span> : null}
@@ -1514,46 +1590,53 @@ export function CoachScheduleManager({ athleteId, scheduleApiBase = `/api/coach/
                         )
                       })}
 
+                      {cellWeekMarkers.slice(0, 2).map((weekMarker, mobileLane) => {
+                        const previousHasMarker = previousCell?.weekMarkers.some((marker) => marker.id === weekMarker.id) ?? false
+                        const nextHasMarker = nextCell?.weekMarkers.some((marker) => marker.id === weekMarker.id) ?? false
+                        const weekColor = getWeekMarkerColor(weekMarker.colorKey)
+                        return (
+                          <div key={`mobile-${weekMarker.id}`} className={`pointer-events-none absolute -left-px -right-px z-0 flex h-3 items-center sm:hidden ${weekColor.badgeClass} ${!previousHasMarker ? 'rounded-l-full pl-1' : ''} ${!nextHasMarker ? 'rounded-r-full pr-1' : ''}`} style={{ top: `${36 + mobileLane * 14}px` }}>
+                            {!previousHasMarker && cell.date === weekMarker.startDate ? <span className="min-w-0 truncate text-[8px] font-bold leading-none">W{weekMarker.weekNum}</span> : null}
+                          </div>
+                        )
+                      })}
+
                       <div className="flex items-start justify-between gap-2">
-                        <div className="relative z-10 space-y-2">
-                          <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${isSelected || isToday ? 'bg-slate-900 text-white' : cell.inCurrentMonth ? 'bg-slate-100 text-slate-900' : 'bg-slate-100 text-slate-400'}`}>
+                        <div className="relative z-10 flex items-center gap-1">
+                          <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold sm:h-8 sm:w-8 sm:text-sm ${isSelected ? 'bg-sky-500 text-white' : isToday ? 'bg-slate-900 text-white' : cell.inCurrentMonth ? 'bg-slate-100 text-slate-900' : 'bg-slate-100 text-slate-400'}`}>
                             {cell.day}
                           </div>
                         </div>
                         {(assignmentCount > 0 || eventCount > 0) ? (
-                          <div className="flex flex-col items-end gap-1 text-[10px] font-semibold">
+                          <div className="relative z-10 hidden flex-col items-end gap-1 text-[10px] font-semibold sm:flex">
                             {assignmentCount > 0 ? <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">課表 {assignmentCount}</span> : null}
                             {eventCount > 0 ? <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">事件 {eventCount}</span> : null}
                           </div>
                         ) : null}
                       </div>
 
-                      <div className="relative z-10 space-y-2" style={{ marginTop: `${cellWeekMarkers.length > 0 ? 44 + Math.max(0, highestCellLane) * 30 : 12}px` }}>
-                        {previewItems.map((item) => (
+                      <div className="coach-calendar-cell-items relative z-10 space-y-1 sm:space-y-2" style={{ '--coach-calendar-mobile-offset': `${cellWeekMarkers.length > 0 ? 24 + Math.min(cellWeekMarkers.length, 2) * 14 : 8}px`, '--coach-calendar-desktop-offset': `${cellWeekMarkers.length > 0 ? 44 + Math.max(0, highestCellLane) * 30 : 12}px` } as React.CSSProperties}>
+                        {previewItems.map((item, itemIndex) => (
                           <div
                             key={`${cell.date}-${item.kind}-${item.id}`}
-                            className={`rounded-xl bg-slate-100 px-2.5 py-1.5 text-[11px] font-medium leading-4 text-slate-700 ${cell.inCurrentMonth ? '' : 'opacity-70'}`}
+                            className={`${itemIndex > 0 ? 'hidden sm:block' : ''} rounded-md px-1 py-0.5 text-[9px] font-medium leading-3 sm:rounded-xl sm:bg-slate-100 sm:px-2.5 sm:py-1.5 sm:text-[11px] sm:leading-4 sm:text-slate-700 ${item.kind === 'assignment' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'} ${cell.inCurrentMonth ? '' : 'opacity-70'}`}
                             title={`${item.title}｜${item.meta}`}
                           >
                             {item.kind === 'assignment' ? (
-                              <AssignmentCalendarPreview
-                                weekLabel={item.weekLabel}
-                                cycleName={item.cycleName}
-                                eventName={item.eventName}
-                                categoryLabel={item.categoryLabel}
-                                blockCode={item.blockCode}
-                              />
+                              <>
+                                <span className="block truncate sm:hidden">{item.eventName}</span>
+                                <span className="hidden sm:block"><AssignmentCalendarPreview weekLabel={item.weekLabel} cycleName={item.cycleName} eventName={item.eventName} categoryLabel={item.categoryLabel} blockCode={item.blockCode} /></span>
+                              </>
                             ) : (
                               <>
                                 <div className="truncate">{item.previewTop}</div>
-                                {item.previewBottom ? <div className="mt-0.5 truncate">{item.previewBottom}</div> : null}
+                                {item.previewBottom ? <div className="mt-0.5 hidden truncate sm:block">{item.previewBottom}</div> : null}
                               </>
                             )}
                           </div>
                         ))}
-                        {cell.items.length > 2 ? (
-                          <div className="text-[11px] font-semibold text-slate-500">+{cell.items.length - 2} 筆</div>
-                        ) : null}
+                        {cell.items.length > 1 ? <div className="text-[10px] font-semibold text-slate-500 sm:hidden">+{cell.items.length - 1} 筆</div> : null}
+                        {cell.items.length > 2 ? <div className="hidden text-[11px] font-semibold text-slate-500 sm:block">+{cell.items.length - 2} 筆</div> : null}
                         {cell.items.length === 0 ? <div className="pt-4 text-[11px] text-slate-300">&nbsp;</div> : null}
                       </div>
                     </button>
@@ -1561,6 +1644,8 @@ export function CoachScheduleManager({ athleteId, scheduleApiBase = `/api/coach/
                 })}
               </div>
             </div>
+          </div>
+          </div>
           </div>
         </div>
       </article>
@@ -1757,7 +1842,7 @@ export function CoachScheduleManager({ athleteId, scheduleApiBase = `/api/coach/
         </div>
       ) : null}
 
-      <section ref={detailSectionRef} className="lab-card overflow-hidden p-7 sm:p-8">
+      <article ref={detailSectionRef} className="lab-card overflow-hidden p-4 sm:p-8">
         <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="lab-eyebrow">Selected Day</p>
@@ -1766,16 +1851,21 @@ export function CoachScheduleManager({ athleteId, scheduleApiBase = `/api/coach/
           <div className="flex flex-wrap gap-2">
             <span className="lab-badge bg-white/90 text-slate-900">課表 {selectedDateAssignments.length}</span>
             <span className="lab-badge bg-white/90 text-slate-900">事件 {selectedDateEvents.length}</span>
+            {selectedDateWeekMarkers.map((marker) => (
+              <span key={marker.id} className={`lab-badge ${getWeekMarkerColor(marker.colorKey).chipClass}`}>
+                Week {marker.weekNum}{marker.note ? `・${marker.note}` : ''}
+              </span>
+            ))}
           </div>
         </div>
 
         <p className="lab-copy mt-5 px-1">下方顯示這一天的完整課表安排與一般事件；課表內容編輯也在這裡進行。</p>
 
-        <div className="mt-6">
+        <div className="mt-6 space-y-4">
           {selectedDateAssignments.length === 0 && selectedDateEvents.length === 0 ? (
-          <div className="lab-card-muted px-5 py-6 text-sm text-slate-600">這一天目前沒有任何安排。</div>
-        ) : (
-          <div className="space-y-4">
+            <div className="lab-card-muted px-5 py-6 text-sm text-slate-600">這一天目前沒有任何安排。</div>
+          ) : (
+            <>
             {selectedDateAssignments.map((assignment) => (
               <div key={assignment.id} id={`assignment-detail-${assignment.id}`}>
                 <AssignmentCard assignment={assignment} athleteId={athleteId} scheduleApiBase={scheduleApiBase} allowAssignmentContentEditing={allowAssignmentContentEditing} onUpdated={applySchedule} />
@@ -1784,10 +1874,10 @@ export function CoachScheduleManager({ athleteId, scheduleApiBase = `/api/coach/
             {selectedDateEvents.map((event) => (
               <EventCard key={event.id} event={event} athleteId={athleteId} scheduleApiBase={scheduleApiBase} onUpdated={applySchedule} />
             ))}
-          </div>
-        )}
+            </>
+          )}
         </div>
-      </section>
+      </article>
     </div>
   )
 }

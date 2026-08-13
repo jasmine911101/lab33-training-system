@@ -113,7 +113,12 @@ async function ensureEventBelongsToAthlete(athleteId: number, eventId: number) {
 }
 
 async function templateExerciseRowsForBlock(blockId: number): Promise<BlockExerciseTemplateRow[]> {
-  const supabase = await createClient()
+  const { admin, error } = await ensureAdmin()
+  if (!admin) {
+    throw new Error(error ?? '缺少 service role。')
+  }
+
+  const supabase = admin
   const [{ data: sections, error: sectionsError }, { data: exercises, error: exercisesError }] = await Promise.all([
     supabase.from('block_sections').select('id, section_name, order_num').eq('block_id', blockId).order('order_num', { ascending: true }),
     supabase.from('block_exercises').select('id, section_id, exercise_name, sets, reps_or_time, equipment, intensity, weight, rest, video_url, notes, order_num').eq('block_id', blockId).order('order_num', { ascending: true }),
@@ -154,13 +159,12 @@ async function templateExerciseRowsForBlock(blockId: number): Promise<BlockExerc
   return rows
 }
 
-async function createAssignmentExerciseSnapshot(athleteBlockId: number, blockId: number) {
+async function createAssignmentExerciseSnapshot(athleteBlockId: number, rows: BlockExerciseTemplateRow[]) {
   const { admin, error } = await ensureAdmin()
   if (!admin) {
     throw new Error(error ?? '缺少 service role。')
   }
 
-  const rows = await templateExerciseRowsForBlock(blockId)
   const { error: deleteError } = await admin.from('athlete_block_exercises').delete().eq('athlete_block_id', athleteBlockId)
   if (deleteError) throw deleteError
 
@@ -279,6 +283,17 @@ export async function createAssignmentForAthlete(
     return { error: '結束日期不能早於開始日期。' }
   }
 
+  let templateRows: BlockExerciseTemplateRow[]
+  try {
+    templateRows = await templateExerciseRowsForBlock(payload.block_id)
+  } catch (templateError) {
+    return { error: templateError instanceof Error ? templateError.message : '讀取板塊內容失敗。' }
+  }
+
+  if (templateRows.length === 0) {
+    return { error: '此板塊尚未建立任何動作內容，請先在板塊管理補上內容後再加入課表。' }
+  }
+
   const { data: inserted, error: insertError } = await admin
     .from('athlete_blocks')
     .insert({
@@ -300,8 +315,9 @@ export async function createAssignmentForAthlete(
   if (insertError) return { error: insertError.message }
 
   try {
-    await createAssignmentExerciseSnapshot(Number(inserted.id), payload.block_id)
+    await createAssignmentExerciseSnapshot(Number(inserted.id), templateRows)
   } catch (snapshotError) {
+    await admin.from('athlete_blocks').delete().eq('id', inserted.id)
     return { error: snapshotError instanceof Error ? snapshotError.message : '建立課表快照失敗。' }
   }
 

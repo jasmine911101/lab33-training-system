@@ -103,9 +103,13 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
 
         <div className="min-w-0">
           <header className="lab-mobile-topbar">
-            <Link href="/" aria-label="LAB33 首頁"><BrandLogo className="w-24" priority /></Link>
-            <h1 className="lab-page-title !rounded-xl !px-3 !py-2 text-2xl">{title}</h1>
-            <span className={role === 'coach' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
+            <Link href="/" className="shrink-0" aria-label="LAB33 首頁">
+              <BrandLogo className="w-24" priority />
+            </Link>
+            <div className="min-w-0 text-right">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-400">LAB33 Training</p>
+              <p className="mt-0.5 text-sm font-bold text-slate-800">{role === 'coach' ? '教練端' : '學員端'}</p>
+            </div>
           </header>
 
           {hideHeaderCard ? null : (

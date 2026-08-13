@@ -11,7 +11,7 @@ export default async function StudentCalendarPage() {
 
   if (!studentProfile) {
     return (
-      <div className="lab-page px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="lab-page px-3 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
         <div className="mx-auto w-full max-w-4xl">
           <ProfileStatusCard
             title="找不到對應的 athlete profile"
@@ -28,7 +28,7 @@ export default async function StudentCalendarPage() {
 
   if (requiresPasswordReset) {
     return (
-      <div className="lab-page px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="lab-page px-3 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
         <div className="mx-auto w-full max-w-2xl">
           <PasswordUpdateForm
             athleteId={studentProfile.id}
@@ -49,7 +49,7 @@ export default async function StudentCalendarPage() {
   const schedule = isTeamAthlete ? teamSchedule : await getAthleteScheduleBundle(studentProfile.id)
 
   return (
-    <div className="lab-page px-4 pb-8 pt-4 sm:px-6 lg:px-8 lg:pb-10 lg:pt-6">
+    <div className="lab-page px-3 pb-6 pt-3 sm:px-6 sm:pb-8 sm:pt-4 lg:px-8 lg:pb-10 lg:pt-6">
       <div className="mx-auto w-full max-w-[1600px]">
         <StudentReportSchedule
           schedule={schedule}

@@ -33,17 +33,17 @@ export function CoachDashboardHeader({
 
   return (
     <>
-      <section className="lab-card overflow-hidden p-7 sm:p-8">
-        <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <section className="lab-card overflow-hidden p-4 sm:p-8">
+        <div className="lab-section-heading lab-section-heading-flush flex-col gap-3 !px-4 !py-4 sm:gap-4 sm:!px-6 sm:!py-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="lab-eyebrow">Coach Dashboard</p>
-            <h2 className="lab-section-title mt-3">教練總覽</h2>
+            <h2 className="lab-section-title mt-2 sm:mt-3">教練總覽</h2>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex gap-2 sm:flex-wrap sm:gap-3">
             <button
               type="button"
-              className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm font-bold"
+              className="lab-btn-secondary !min-h-9 flex-1 px-3 py-2 text-sm font-bold sm:!min-h-10 sm:flex-none sm:px-4"
               onClick={() => setIsProfileOpen(true)}
             >
               教練資料
@@ -51,7 +51,7 @@ export function CoachDashboardHeader({
             {allowPasswordManagement ? (
               <button
                 type="button"
-                className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm font-bold"
+                className="lab-btn-secondary !min-h-9 flex-1 px-3 py-2 text-sm font-bold sm:!min-h-10 sm:flex-none sm:px-4"
                 onClick={() => setIsPasswordOpen(true)}
               >
                 修改密碼
@@ -60,9 +60,10 @@ export function CoachDashboardHeader({
           </div>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center gap-3">
+        <div className="mt-4 flex items-center gap-2 sm:mt-6 sm:flex-wrap sm:gap-3">
           <span className={roleLabel === '總教練' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
-          <SummaryStat label="學員" value={athleteCount} />
+          <div className="sm:hidden rounded-xl bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.7)]">學員 {athleteCount}</div>
+          <div className="hidden sm:block"><SummaryStat label="學員" value={athleteCount} /></div>
         </div>
       </section>
 

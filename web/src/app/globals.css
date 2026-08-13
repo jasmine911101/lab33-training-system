@@ -134,7 +134,7 @@ a {
   }
 
   .lab-app-shell {
-    @apply mx-auto flex min-h-screen w-full max-w-[88rem] flex-col px-4 pb-28 pt-4 sm:px-7 sm:pb-8 lg:grid lg:grid-cols-[19rem_minmax(0,1fr)] lg:gap-8 lg:px-10 lg:py-8;
+    @apply mx-auto flex min-h-screen w-full max-w-[88rem] flex-col px-3 pb-28 pt-4 sm:px-7 sm:pb-8 lg:grid lg:grid-cols-[19rem_minmax(0,1fr)] lg:gap-8 lg:px-10 lg:py-8;
   }
 
   .lab-card {
@@ -190,8 +190,8 @@ a {
   }
 
   .lab-section-heading-flush {
-    margin: -1.75rem -1.75rem 0;
-    width: calc(100% + 3.5rem);
+    margin: -1rem -1rem 0;
+    width: calc(100% + 2rem);
     border-radius: 0;
   }
 
@@ -371,9 +371,9 @@ a {
   }
 
   .lab-mobile-topbar {
-    @apply sticky top-0 z-30 mb-6 flex items-center justify-between rounded-[1.5rem] border bg-white/95 px-5 py-4 backdrop-blur lg:hidden;
-    border-color: var(--color-border);
-    box-shadow: var(--shadow-soft);
+    @apply sticky top-0 z-30 mb-4 flex min-h-16 items-center justify-between gap-4 border-b bg-white/95 px-4 py-3 backdrop-blur lg:hidden;
+    border-color: rgba(219, 227, 236, 0.92);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
   }
 
   .lab-mobile-nav {
@@ -389,6 +389,7 @@ a {
   .lab-mobile-nav-link {
     @apply flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl px-2 text-[0.72rem] font-semibold transition;
     color: var(--color-text-subtle);
+    touch-action: manipulation;
   }
 
   .lab-mobile-nav-link-active {
@@ -469,5 +470,34 @@ a {
 .lab-week-slate-swatch { background: #7d888e; }
 .lab-week-slate-band, .lab-week-slate-chip { background: #e5e9ea; color: #49545a; }
 .lab-week-slate-badge { background: #7d888e; color: #fff; }
+
+/* On phones, month cells prioritize the day and one clear summary. Desktop keeps the multi-lane period layout. */
+.lab-calendar-cell-items {
+  margin-top: var(--calendar-mobile-item-offset, 0.5rem);
+}
+
+/* Coach month grid shares the mobile hierarchy of the student calendar. */
+.coach-calendar-cell {
+  min-height: calc(108px + var(--coach-calendar-week-lanes, 0) * 30px);
+}
+
+.coach-calendar-cell-items {
+  margin-top: var(--coach-calendar-mobile-offset, 0.5rem);
+}
+
+@media (min-width: 640px) {
+  .lab-calendar-cell-items {
+    margin-top: var(--calendar-desktop-item-offset);
+  }
+
+  .coach-calendar-cell {
+    min-height: calc(132px + var(--coach-calendar-week-lanes, 0) * 30px);
+  }
+
+  .coach-calendar-cell-items {
+    margin-top: var(--coach-calendar-desktop-offset, 0.75rem);
+  }
+}
+
 @media (hover: hover) and (pointer: fine) { .lab-card:hover { border-color: rgba(0,0,0,.18); box-shadow: var(--shadow-strong); transform: translateY(-2px); } }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: 1ms !important; transition-duration: 1ms !important; } }
