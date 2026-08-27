@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { CoachDashboardHeader } from '@/components/coach/coach-dashboard-header'
 import { TemporaryCredentialDialog, type TemporaryCredentialDialogState } from '@/components/coach/coach-athlete-manager'
+import { DangerConfirmDialog } from '@/components/common/danger-confirm-dialog'
 import type { BlockRecord } from '@/services/team-training'
 
 type Athlete = { id: number; name: string | null; email: string | null }
-type Team = { id: number; name: string; description: string; members: Athlete[] }
+type Team = { id: number; name: string; description: string; members: Athlete[]; batchAccounts: Athlete[] }
 type Props = {
   initialData: { teams: Team[]; athletes: Athlete[]; blocks: BlockRecord[] }
   roleLabel: string
@@ -50,6 +51,8 @@ export function TeamTrainingManager({ initialData, roleLabel, userEmail, coachNa
   const [teamSearch, setTeamSearch] = useState('')
   const [showCreateTeam, setShowCreateTeam] = useState(false)
   const [resetCredential, setResetCredential] = useState<TemporaryCredentialDialogState | null>(null)
+  const [deletingTeam, setDeletingTeam] = useState<Team | null>(null)
+  const [selectedBatchAccountIds, setSelectedBatchAccountIds] = useState<number[]>([])
   const matchingTeams = initialData.teams.filter((team) => {
     const query = teamSearch.trim().toLowerCase()
     return !query || `${team.name} ${team.description || ''}`.toLowerCase().includes(query)
@@ -84,6 +87,17 @@ export function TeamTrainingManager({ initialData, roleLabel, userEmail, coachNa
     } finally {
       setSaving(false)
     }
+  }
+
+  async function confirmDeleteTeam(confirmationName: string) {
+    if (!deletingTeam) return
+    const team = deletingTeam
+    await submit(async () => {
+      const result = await remove(`/api/coach/teams/${team.id}`, { confirmationName, selectedBatchAccountIds })
+      setDeletingTeam(null)
+      setSelectedBatchAccountIds([])
+      return result
+    })
   }
 
   async function resetMemberPassword(athlete: Athlete) {
@@ -135,9 +149,14 @@ export function TeamTrainingManager({ initialData, roleLabel, userEmail, coachNa
       return <section className="rounded-[1.25rem] border border-slate-200 bg-white p-5 sm:p-6" key={team.id}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><h2 className="text-xl font-black text-slate-900">{team.name}</h2><p className="lab-copy mt-1">{team.description || '尚未填寫團隊說明'}</p></div>
-          <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setShowMembers((current) => ({ ...current, [team.id]: !membersOpen }))}>
-            {membersOpen ? '收起目前成員' : `查看目前成員（${visibleMembers.length}）`}
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setShowMembers((current) => ({ ...current, [team.id]: !membersOpen }))}>
+              {membersOpen ? '收起目前成員' : `查看目前成員（${visibleMembers.length}）`}
+            </button>
+            <button type="button" className="lab-btn-secondary !min-h-10 border-rose-200 px-4 py-2 text-sm text-rose-700 hover:border-rose-300 hover:bg-rose-50" disabled={saving} onClick={() => { setError(''); setNotice(''); setSelectedBatchAccountIds([]); setDeletingTeam(team) }}>
+              刪除團隊
+            </button>
+          </div>
         </div>
 
         {membersOpen ? <section className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -152,6 +171,29 @@ export function TeamTrainingManager({ initialData, roleLabel, userEmail, coachNa
     </section>
     })}</div>}
     </article>
+    {deletingTeam ? <DangerConfirmDialog
+      title={`刪除團隊「${deletingTeam.name}」？`}
+      description={selectedBatchAccountIds.length
+        ? '這會永久刪除團隊的共享課表、行事曆事件、週期標記、隊員關聯與訓練回報；你選取的團隊批次帳號、個人資料與個人訓練紀錄也會一併刪除。手動加入的既有學員帳號與板塊模板會保留。'
+        : '這會永久刪除團隊的共享課表、行事曆事件、週期標記、隊員關聯與訓練回報。運動員帳號、個人課表及板塊模板不會被刪除。'}
+      impacts={[
+        { label: '團隊', value: deletingTeam.name },
+        { label: '目前成員', value: selectedBatchAccountIds.length ? `${selectedBatchAccountIds.length} 個選取帳號會刪除，其餘保留` : `${deletingTeam.members.length} 位（帳號保留）` },
+        { label: '共享課表與團隊行事曆', value: '永久刪除' },
+      ]}
+      expectedText={deletingTeam.name}
+      expectedTextLabel="請輸入團隊名稱以確認"
+      confirmLabel="永久刪除團隊"
+      pending={saving}
+      error={error || null}
+      onCancel={() => { if (!saving) { setDeletingTeam(null); setSelectedBatchAccountIds([]); setError('') } }}
+      onConfirm={(confirmationName) => void confirmDeleteTeam(confirmationName)}
+    >
+      {deletingTeam.batchAccounts.length ? <section className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold">選擇要一併刪除的批次帳號</p><p className="mt-1 leading-6">勾選後會永久刪除帳號、個人資料與訓練紀錄；未勾選帳號會保留。</p></div><div className="flex gap-2"><button type="button" className="lab-btn-secondary !min-h-9 px-3 py-1.5 text-xs" disabled={saving} onClick={() => setSelectedBatchAccountIds(deletingTeam.batchAccounts.map((account) => account.id))}>全選</button><button type="button" className="lab-btn-secondary !min-h-9 px-3 py-1.5 text-xs" disabled={saving} onClick={() => setSelectedBatchAccountIds([])}>全不選</button></div></div>
+        <ul className="mt-3 max-h-[min(18rem,35dvh)] space-y-2 overflow-y-auto overscroll-contain pr-1 touch-pan-y">{deletingTeam.batchAccounts.map((account) => <li key={account.id}><label className="flex cursor-pointer items-start gap-3 rounded-lg border border-rose-100 bg-white px-3 py-2"><input type="checkbox" name={`delete-team-account-${account.id}`} checked={selectedBatchAccountIds.includes(account.id)} onChange={(event) => setSelectedBatchAccountIds((current) => event.target.checked ? [...new Set([...current, account.id])] : current.filter((id) => id !== account.id))} disabled={saving} className="mt-0.5 h-4 w-4 shrink-0" /><span className="min-w-0"><span className="block font-semibold text-slate-900 break-words">{account.name || `隊員 #${account.id}`}</span>{account.email ? <span className="mt-0.5 block break-all text-xs text-slate-600">{account.email}</span> : null}</span></label></li>)}</ul>
+      </section> : <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">這個團隊沒有可隨團隊刪除的批次帳號。</p>}
+    </DangerConfirmDialog> : null}
     {resetCredential ? <TemporaryCredentialDialog state={resetCredential} onClose={() => setResetCredential(null)} /> : null}
     </div>
 }

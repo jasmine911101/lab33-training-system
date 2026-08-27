@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 export type DangerImpactItem = {
   label: string
@@ -18,6 +18,7 @@ type DangerConfirmDialogProps = {
   expectedTextLabel?: string
   pending?: boolean
   error?: string | null
+  children?: ReactNode
   onCancel: () => void
   onConfirm: (confirmationText: string) => void
 }
@@ -32,6 +33,7 @@ export function DangerConfirmDialog({
   expectedTextLabel = '請輸入確認文字',
   pending = false,
   error = null,
+  children,
   onCancel,
   onConfirm,
 }: DangerConfirmDialogProps) {
@@ -60,9 +62,9 @@ export function DangerConfirmDialog({
   }, [onCancel, pending])
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 px-4 py-6" onMouseDown={() => !pending && onCancel()}>
+    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto overscroll-contain bg-slate-950/45 px-4 py-4 sm:items-center sm:py-6" onMouseDown={() => !pending && onCancel()}>
       <div
-        className="w-full max-w-2xl rounded-[1.75rem] border border-slate-300 bg-white p-6 shadow-[0_24px_70px_rgba(10,10,10,0.22)]"
+        className="my-auto w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-[1.75rem] border border-slate-300 bg-white p-5 shadow-[0_24px_70px_rgba(10,10,10,0.22)] sm:max-h-[calc(100dvh-3rem)] sm:p-6"
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -100,6 +102,8 @@ export function DangerConfirmDialog({
           </div>
         ) : null}
 
+        {children ? <div className="mt-5">{children}</div> : null}
+
         {needsTypedConfirmation ? (
           <div className="mt-5 space-y-2">
             <label className="text-sm font-semibold text-slate-700" htmlFor="danger-confirm-input">
@@ -107,12 +111,13 @@ export function DangerConfirmDialog({
             </label>
             <input
               id="danger-confirm-input"
+              name="danger-confirmation"
               value={confirmationText}
               onChange={(event) => setConfirmationText(event.target.value)}
               className="lab-input"
               placeholder={normalizedExpectedText}
+              autoComplete="off"
               disabled={pending}
-              autoFocus
             />
             <p className="text-xs leading-6 text-slate-500">必須完全輸入：{normalizedExpectedText}</p>
           </div>
@@ -125,7 +130,7 @@ export function DangerConfirmDialog({
             {cancelLabel}
           </button>
           <button type="button" className="lab-btn-primary" onClick={() => onConfirm(confirmationText.trim())} disabled={!canConfirm}>
-            {pending ? '處理中...' : confirmLabel}
+            {pending ? '處理中…' : confirmLabel}
           </button>
         </div>
       </div>
