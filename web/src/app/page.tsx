@@ -18,12 +18,12 @@ export default async function HomePage() {
               <BrandLogo className="w-52 sm:w-64" priority />
               <div className="flex flex-wrap gap-3">
                 {user ? (
-                  <Link href={signedInHref} className="lab-btn-primary">
+                  <Link href={signedInHref} className="lab-btn-primary !text-white">
                     前往我的 Dashboard
                   </Link>
                 ) : (
                   <>
-                    <Link href="/coach/login" className="lab-btn-primary">
+                    <Link href="/coach/login" className="lab-btn-primary !text-white">
                       教練端登入
                     </Link>
                     <Link href="/student/login" className="lab-btn-secondary">

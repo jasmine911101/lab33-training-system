@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 
 import { GENERAL_EVENT_TYPES } from '@/lib/types/schedule-management'
 import { normalizeExternalUrl } from '@/lib/external-url'
@@ -32,17 +33,21 @@ type CalendarCell = {
 }
 
 const WEEK_MARKER_COLORS = [
-  { key: 'sky', badgeClass: 'lab-week-sky-badge', chipClass: 'lab-week-sky-chip' },
-  { key: 'emerald', badgeClass: 'lab-week-emerald-badge', chipClass: 'lab-week-emerald-chip' },
-  { key: 'amber', badgeClass: 'lab-week-amber-badge', chipClass: 'lab-week-amber-chip' },
-  { key: 'violet', badgeClass: 'lab-week-violet-badge', chipClass: 'lab-week-violet-chip' },
-  { key: 'rose', badgeClass: 'lab-week-rose-badge', chipClass: 'lab-week-rose-chip' },
-  { key: 'slate', badgeClass: 'lab-week-slate-badge', chipClass: 'lab-week-slate-chip' },
+  { key: 'sky', name: '藍色', badgeClass: 'lab-week-sky-badge', chipClass: 'lab-week-sky-chip' },
+  { key: 'emerald', name: '綠色', badgeClass: 'lab-week-emerald-badge', chipClass: 'lab-week-emerald-chip' },
+  { key: 'amber', name: '橘色', badgeClass: 'lab-week-amber-badge', chipClass: 'lab-week-amber-chip' },
+  { key: 'violet', name: '紫色', badgeClass: 'lab-week-violet-badge', chipClass: 'lab-week-violet-chip' },
+  { key: 'rose', name: '粉色', badgeClass: 'lab-week-rose-badge', chipClass: 'lab-week-rose-chip' },
+  { key: 'slate', name: '灰色', badgeClass: 'lab-week-slate-badge', chipClass: 'lab-week-slate-chip' },
 ] as const
 
 type StudentReportScheduleProps = {
   schedule: AthleteScheduleBundle
   emptyMessage: string
+  reportApiBase?: string
+  title?: string
+  allowPersonalEvents?: boolean
+  showWeekMarkerPanel?: boolean
 }
 
 type StudentCalendarPreviewProps = {
@@ -238,7 +243,51 @@ function StudentExerciseReportTable({
   onChange: (rowId: string, field: 'draft_actual_sets' | 'draft_actual_weight', value: string) => void
 }) {
   return (
-    <div className="overflow-x-auto">
+    <>
+      <div className="space-y-3 sm:hidden">
+        {rows.map((row, index) => {
+          const isReported = hasStudentReport(row)
+          const diffLabel = differenceLabel(row)
+
+          return (
+            <article key={`${row.id || row.exercise_name}-${index}`} className={`rounded-[1.1rem] border p-4 ${isReported ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-white'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-base font-bold leading-6 text-slate-900">{row.exercise_name || '-'}</p>
+                  {!row.can_report ? <p className="mt-1 text-xs font-semibold text-amber-700">僅可查看</p> : null}
+                </div>
+                {isReported && row.can_report ? <span className="lab-badge-success shrink-0">已回報</span> : null}
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <div className="rounded-xl bg-slate-50 px-3 py-2.5"><p className="text-xs font-semibold text-slate-400">次數／時間</p><p className="mt-1 font-semibold text-slate-700">{row.reps_or_time || '-'}</p></div>
+                <div className="rounded-xl bg-slate-50 px-3 py-2.5"><p className="text-xs font-semibold text-slate-400">強度</p><p className="mt-1 font-semibold text-slate-700">{row.intensity || '-'}</p></div>
+                <div className="rounded-xl bg-slate-50 px-3 py-2.5"><p className="text-xs font-semibold text-slate-400">休息</p><p className="mt-1 font-semibold text-slate-700">{row.rest || '-'}</p></div>
+                <div className="rounded-xl bg-slate-50 px-3 py-2.5"><p className="text-xs font-semibold text-slate-400">工具</p><p className="mt-1 font-semibold text-slate-700">{row.equipment || '-'}</p></div>
+              </div>
+
+              {row.can_report ? (
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <label className="text-sm font-semibold text-slate-700">實際組數
+                    <input className={`lab-input mt-1.5 !min-h-11 px-3 py-2 text-sm ${row.actual_sets ? '!border-emerald-300 !bg-emerald-50' : ''}`} value={row.draft_actual_sets} onChange={(event) => onChange(row.id, 'draft_actual_sets', event.target.value)} placeholder={row.sets || '-'} />
+                    {row.actual_sets ? <span className="mt-1 block text-xs font-normal text-slate-500">原始：{row.sets || '-'}</span> : null}
+                  </label>
+                  <label className="text-sm font-semibold text-slate-700">實際重量
+                    <input className={`lab-input mt-1.5 !min-h-11 px-3 py-2 text-sm ${row.actual_weight ? '!border-emerald-300 !bg-emerald-50' : ''}`} value={row.draft_actual_weight} onChange={(event) => onChange(row.id, 'draft_actual_weight', event.target.value)} placeholder={row.weight || '-'} />
+                    {row.actual_weight ? <span className="mt-1 block text-xs font-normal text-slate-500">原始：{row.weight || '-'}</span> : null}
+                  </label>
+                </div>
+              ) : (
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs font-semibold text-slate-400">組數</p><p className="mt-1 font-semibold text-slate-700">{row.sets || '-'}</p></div><div><p className="text-xs font-semibold text-slate-400">重量</p><p className="mt-1 font-semibold text-slate-700">{row.weight || '-'}</p></div></div>
+              )}
+
+              {(row.notes || diffLabel || normalizeExternalUrl(row.video_url)) ? <div className="mt-4 border-t border-slate-200 pt-3 text-sm text-slate-600">{row.notes ? <p>{row.notes}</p> : null}{diffLabel ? <span className="lab-badge-info mt-2">與安排不同</span> : null}{normalizeExternalUrl(row.video_url) ? <a href={normalizeExternalUrl(row.video_url) ?? undefined} target="_blank" rel="noreferrer" className="lab-badge-info mt-2">觀看影片</a> : null}</div> : null}
+            </article>
+          )
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto sm:block">
       <table className="min-w-[1100px] w-full border-separate border-spacing-0 text-sm">
         <thead>
           <tr className="text-left">
@@ -319,13 +368,32 @@ function StudentExerciseReportTable({
           })}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   )
 }
 
 function StudentPreviewExerciseTable({ rows }: { rows: ExerciseRow[] }) {
   return (
-    <div className="overflow-x-auto">
+    <>
+      <div className="space-y-3 sm:hidden">
+        {rows.map((row, index) => (
+          <article key={`${row.id || row.exercise_name}-${index}`} className="rounded-[1.1rem] border border-slate-200 bg-white p-4">
+            <p className="text-base font-bold leading-6 text-slate-900">{row.exercise_name || '-'}</p>
+            <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-xl bg-slate-50 px-3 py-2.5"><p className="text-xs font-semibold text-slate-400">組數</p><p className="mt-1 font-semibold text-slate-700">{row.sets || '-'}</p></div>
+              <div className="rounded-xl bg-slate-50 px-3 py-2.5"><p className="text-xs font-semibold text-slate-400">次數／時間</p><p className="mt-1 font-semibold text-slate-700">{row.reps_or_time || '-'}</p></div>
+              <div className="rounded-xl bg-slate-50 px-3 py-2.5"><p className="text-xs font-semibold text-slate-400">強度</p><p className="mt-1 font-semibold text-slate-700">{row.intensity || '-'}</p></div>
+              <div className="rounded-xl bg-slate-50 px-3 py-2.5"><p className="text-xs font-semibold text-slate-400">重量</p><p className="mt-1 font-semibold text-slate-700">{row.weight || '-'}</p></div>
+              <div className="rounded-xl bg-slate-50 px-3 py-2.5"><p className="text-xs font-semibold text-slate-400">休息</p><p className="mt-1 font-semibold text-slate-700">{row.rest || '-'}</p></div>
+              <div className="rounded-xl bg-slate-50 px-3 py-2.5"><p className="text-xs font-semibold text-slate-400">工具</p><p className="mt-1 font-semibold text-slate-700">{row.equipment || '-'}</p></div>
+            </div>
+            {(row.notes || normalizeExternalUrl(row.video_url)) ? <div className="mt-4 border-t border-slate-200 pt-3 text-sm text-slate-600">{row.notes ? <p>{row.notes}</p> : null}{normalizeExternalUrl(row.video_url) ? <a href={normalizeExternalUrl(row.video_url) ?? undefined} target="_blank" rel="noreferrer" className="lab-badge-info mt-2">觀看影片</a> : null}</div> : null}
+          </article>
+        ))}
+      </div>
+
+      <div className="hidden overflow-x-auto sm:block">
       <table className="min-w-[1100px] w-full border-separate border-spacing-0 text-sm">
         <thead>
           <tr className="text-left">
@@ -362,7 +430,8 @@ function StudentPreviewExerciseTable({ rows }: { rows: ExerciseRow[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -426,7 +495,8 @@ function StudentPreviewAssignmentCard({
         </button>
       </article>
 
-      {isOpen ? (
+      {isOpen && typeof document !== 'undefined'
+        ? createPortal(
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setIsOpen(false)}>
           <div
             className="relative flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.2)]"
@@ -503,14 +573,16 @@ function StudentPreviewAssignmentCard({
                 <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={() => setIsOpen(false)}>
                   關閉
                 </button>
-                <Link href={href} className="lab-btn-primary !min-h-10 px-4 py-2 text-sm" onClick={() => setIsOpen(false)}>
+                <Link href={href} className="lab-btn-primary !min-h-10 px-4 py-2 text-sm !text-white" onClick={() => setIsOpen(false)}>
                   前往完整行事曆回報
                 </Link>
               </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        </div>,
+        document.body,
+      )
+        : null}
     </>
   )
 }
@@ -519,10 +591,12 @@ function StudentAssignmentCard({
   assignment,
   onSaved,
   forceOpen = false,
+  reportApiBase = '/api/student/assignments',
 }: {
   assignment: AssignmentDetail
   onSaved: (assignmentId: number, sections: AssignmentDetail['sections']) => void
   forceOpen?: boolean
+  reportApiBase?: string
 }) {
   const [sections, setSections] = useState(() => copySections(assignment))
   const [isOpen, setIsOpen] = useState(forceOpen)
@@ -580,7 +654,7 @@ function StudentAssignmentCard({
     setError(null)
 
     try {
-      const response = await fetch(`/api/student/assignments/${assignment.record_id}/report`, {
+      const response = await fetch(`${reportApiBase}/${assignment.record_id}/report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -630,9 +704,15 @@ function StudentAssignmentCard({
     <article className="lab-card p-5 sm:p-6">
       <button type="button" className="flex w-full items-start justify-between gap-4 text-left" onClick={() => setIsOpen((current) => !current)}>
         <div className="min-w-0">
-          <p className="lab-eyebrow">Training Assignment</p>
-          <h3 className="mt-3 text-2xl font-bold text-slate-900">{resolvedBlockName}</h3>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <p className="hidden lab-eyebrow sm:block">Training Assignment</p>
+          <h3 className="text-xl font-bold leading-tight text-slate-900 sm:mt-3 sm:text-2xl">{resolvedBlockName}</h3>
+          <div className="mt-3 flex flex-wrap gap-2 sm:hidden">
+            <CycleBadge weekLabel={assignment.week_label} cycleName={assignment.cycle_name} />
+            <span className="lab-badge bg-sky-100 text-sky-700">{assignment.category_label || '未分類'}</span>
+            <span className="lab-badge bg-slate-100 text-slate-700">{assignment.date_range || '-'}</span>
+            {reportedRowCount > 0 ? <span className="lab-badge-success">已回報 {reportedRowCount} 項</span> : null}
+          </div>
+          <div className="mt-3 hidden flex-wrap gap-2 sm:flex">
             <CycleBadge weekLabel={assignment.week_label} cycleName={assignment.cycle_name} />
             <span className="lab-badge bg-slate-100 text-slate-700">事件：{assignment.event_display_name || '-'}</span>
             <span className="lab-badge bg-sky-100 text-sky-700">{assignment.category_label}</span>
@@ -640,14 +720,19 @@ function StudentAssignmentCard({
             <span className="lab-badge bg-slate-100 text-slate-700">{assignment.date_range || '-'}</span>
             {reportedRowCount > 0 ? <span className="lab-badge-success">已回報 {reportedRowCount} 項</span> : null}
           </div>
-          <p className="mt-3 text-sm text-slate-600">板塊：{resolvedBlockLabel}</p>
+          <p className="mt-3 hidden text-sm text-slate-600 sm:block">板塊：{resolvedBlockLabel}</p>
         </div>
         <span className="pt-1 text-lg font-semibold text-slate-400">{isOpen ? '▾' : '▸'}</span>
       </button>
 
       {isOpen ? (
         <>
-          <dl className="mt-5 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 border-t border-slate-200 pt-3 text-sm leading-6 text-slate-600 sm:hidden">
+            <p>{assignment.event_display_name || resolvedBlockLabel}</p>
+            <p className="mt-1 text-slate-500">{assignment.block_code || '未設定代號'} · {assignment.date_range || '-'}</p>
+          </div>
+
+          <dl className="mt-5 hidden gap-3 text-sm text-slate-600 sm:grid sm:grid-cols-2 xl:grid-cols-4">
             <DetailMeta label="Week" value={assignment.week_label} />
             <DetailMeta label="事件" value={assignment.event_display_name} />
             <DetailMeta label="分類" value={assignment.category_label} />
@@ -804,21 +889,21 @@ function CalendarMonthGrid({
   compact?: boolean
 }) {
   return (
-    <div className={`rounded-[1.5rem] border border-slate-200 bg-slate-50/80 ${compact ? 'p-4' : 'p-4 sm:p-5'}`}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className={`border-y border-slate-200 bg-slate-50/80 sm:rounded-[1.5rem] sm:border ${compact ? 'p-3 sm:p-4' : 'p-3 sm:p-5'}`}>
+      <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 sm:flex sm:flex-wrap sm:justify-between sm:gap-3">
         <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={onPreviousMonth}>上個月</button>
         <div className="text-center">
           <h3 className="text-lg font-bold text-slate-900 sm:text-xl">{formatMonthLabel(visibleMonth)}</h3>
-          <p className="mt-1 text-xs text-slate-500">{compact ? '點日期前往完整行事曆。' : '點日期即可預覽當天安排；出現 +N 筆時會展開當日摘要框。'}</p>
+          <p className="mt-1 hidden text-xs text-slate-500 sm:block">{compact ? '點日期前往完整行事曆。' : '點日期即可預覽當天安排；出現 +N 筆時會展開當日摘要框。'}</p>
         </div>
         <button type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm" onClick={onNextMonth}>下個月</button>
       </div>
 
-      <div className="mt-5 overflow-x-auto">
-        <div className={compact ? 'min-w-[680px]' : 'min-w-[760px]'}>
+      <div className="mt-4 overflow-hidden sm:mt-5 sm:overflow-x-auto">
+        <div className={compact ? 'min-w-0 sm:min-w-[680px]' : 'min-w-0 sm:min-w-[760px]'}>
           <div className="grid gap-px rounded-t-[1.25rem] bg-slate-200" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
             {['一', '二', '三', '四', '五', '六', '日'].map((day, index) => (
-              <div key={day} className={`bg-white px-3 py-3 text-center text-xs font-semibold tracking-[0.16em] ${index >= 5 ? 'text-orange-500' : 'text-slate-500'}`}>
+              <div key={day} className={`bg-white px-1 py-2 text-center text-[10px] font-semibold tracking-[0.08em] sm:px-3 sm:py-3 sm:text-xs sm:tracking-[0.16em] ${index >= 5 ? 'text-orange-500' : 'text-slate-500'}`}>
                 {day}
               </div>
             ))}
@@ -834,68 +919,87 @@ function CalendarMonthGrid({
               const cellWeekMarkers = cell.weekMarkers
               const previousCell = cellIndex % 7 === 0 ? null : monthDays[cellIndex - 1]
               const nextCell = cellIndex % 7 === 6 ? null : monthDays[cellIndex + 1]
-        const highestCellLane = Math.max(-1, ...cellWeekMarkers.map((marker) => weekMarkerLanes.get(getWeekMarkerLaneKey(marker)) ?? 0))
+              const highestCellLane = Math.max(-1, ...cellWeekMarkers.map((marker) => weekMarkerLanes.get(getWeekMarkerLaneKey(marker)) ?? 0))
 
               return (
                 <button
                   key={cell.date}
                   type="button"
                   onClick={() => onSelectDate(cell)}
-                  className={`relative flex ${compact ? 'min-h-[108px]' : 'min-h-[132px]'} w-full min-w-0 flex-col bg-white p-3 text-left transition hover:z-10 hover:bg-slate-50 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${isSelected ? 'z-10 bg-sky-50 ring-2 ring-inset ring-sky-400' : ''} ${cell.inCurrentMonth ? 'text-slate-900' : 'text-slate-300'}`}
+                  className={`relative flex ${compact ? 'min-h-[108px]' : 'min-h-[132px]'} w-full min-w-0 flex-col bg-white p-1.5 text-left transition hover:z-10 hover:bg-slate-50 focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 sm:p-3 ${isSelected ? 'z-10 bg-sky-50 ring-2 ring-inset ring-sky-400' : ''} ${cell.inCurrentMonth ? 'text-slate-900' : 'text-slate-300'}`}
                   style={{ minHeight: `${(compact ? 108 : 132) + Math.max(0, maxWeekMarkerLane) * 30}px` }}
                 >
                   {cellWeekMarkers.map((weekMarker) => {
-              const lane = weekMarkerLanes.get(getWeekMarkerLaneKey(weekMarker)) ?? 0
+                    const lane = weekMarkerLanes.get(getWeekMarkerLaneKey(weekMarker)) ?? 0
                     const previousHasMarker = previousCell?.weekMarkers.some((marker) => marker.id === weekMarker.id) ?? false
                     const nextHasMarker = nextCell?.weekMarkers.some((marker) => marker.id === weekMarker.id) ?? false
                     const weekColor = getWeekMarkerColor(weekMarker.colorKey)
                     return (
                       <div
                         key={weekMarker.id}
-                        className={`pointer-events-none absolute -left-px -right-px z-0 flex h-7 items-center ${weekColor.badgeClass} ${!previousHasMarker ? 'rounded-l-lg pl-2' : ''} ${!nextHasMarker ? 'rounded-r-lg pr-2' : ''}`}
+                        className={`pointer-events-none absolute -left-px -right-px z-0 hidden h-7 items-center sm:flex ${weekColor.badgeClass} ${!previousHasMarker ? 'rounded-l-lg pl-2' : ''} ${!nextHasMarker ? 'rounded-r-lg pr-2' : ''}`}
                         style={{ top: `${44 + lane * 30}px` }}
                       >
                         {!previousHasMarker ? <span className="min-w-0 truncate text-[11px] font-semibold leading-none">Week {weekMarker.weekNum}{weekMarker.note ? ` · ${weekMarker.note}` : ''}</span> : null}
                       </div>
                     )
                   })}
+                  {cellWeekMarkers.slice(0, 2).map((weekMarker, mobileLane) => {
+                    const previousHasMarker = previousCell?.weekMarkers.some((marker) => marker.id === weekMarker.id) ?? false
+                    const nextHasMarker = nextCell?.weekMarkers.some((marker) => marker.id === weekMarker.id) ?? false
+                    const weekColor = getWeekMarkerColor(weekMarker.colorKey)
+
+                    return (
+                      <div
+                        key={`mobile-${weekMarker.id}`}
+                        className={`pointer-events-none absolute -left-px -right-px z-0 flex h-3 items-center sm:hidden ${weekColor.badgeClass} ${!previousHasMarker ? 'rounded-l-full pl-1' : ''} ${!nextHasMarker ? 'rounded-r-full pr-1' : ''}`}
+                        style={{ top: `${36 + mobileLane * 14}px` }}
+                      >
+                        {!previousHasMarker && cell.date === weekMarker.startDate ? <span className="min-w-0 truncate text-[8px] font-bold leading-none">W{weekMarker.weekNum}</span> : null}
+                      </div>
+                    )
+                  })}
                   <div className="flex items-start justify-between gap-2">
-                    <div className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${isSelected ? 'bg-sky-500 text-white' : isToday ? 'bg-slate-900 text-white' : cell.inCurrentMonth ? 'bg-slate-100 text-slate-900' : 'bg-slate-100 text-slate-400'}`}>
-                      {cell.day}
+                    <div className="relative z-10 flex items-center gap-1">
+                      <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold sm:h-8 sm:w-8 sm:text-sm ${isSelected ? 'bg-sky-500 text-white' : isToday ? 'bg-slate-900 text-white' : cell.inCurrentMonth ? 'bg-slate-100 text-slate-900' : 'bg-slate-100 text-slate-400'}`}>
+                        {cell.day}
+                      </div>
                     </div>
                     {(assignmentCount > 0 || eventCount > 0) ? (
-                      <div className="relative z-10 flex flex-col items-end gap-1 text-[10px] font-semibold">
+                      <div className="relative z-10 hidden flex-col items-end gap-1 text-[10px] font-semibold sm:flex">
                         {assignmentCount > 0 ? <span className="rounded-full bg-orange-100 px-2 py-1 text-orange-700">課表 {assignmentCount}</span> : null}
                         {eventCount > 0 ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700">事件 {eventCount}</span> : null}
                       </div>
                     ) : null}
                   </div>
 
-                  <div className="relative z-10 space-y-2" style={{ marginTop: `${cellWeekMarkers.length > 0 ? 44 + Math.max(0, highestCellLane) * 30 : 12}px` }}>
-                    {previewItems.map((item) => (
+                  <div
+                    className="lab-calendar-cell-items relative z-10 space-y-1 sm:space-y-2"
+                    style={{
+                      '--calendar-mobile-item-offset': `${cellWeekMarkers.length > 0 ? 24 + Math.min(cellWeekMarkers.length, 2) * 14 : 8}px`,
+                      '--calendar-desktop-item-offset': `${cellWeekMarkers.length > 0 ? 44 + Math.max(0, highestCellLane) * 30 : 12}px`,
+                    } as CSSProperties}
+                  >
+                    {previewItems.map((item, itemIndex) => (
                       <div
                         key={`${cell.date}-${item.kind}-${item.id}`}
-                        className={`rounded-xl px-2.5 py-1.5 text-[11px] font-medium leading-4 ${item.kind === 'assignment' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'} ${cell.inCurrentMonth ? '' : 'opacity-70'}`}
+                        className={`${itemIndex > 0 ? 'hidden sm:block' : ''} rounded-md px-1 py-0.5 text-[9px] font-medium leading-3 sm:rounded-xl sm:px-2.5 sm:py-1.5 sm:text-[11px] sm:leading-4 ${item.kind === 'assignment' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'} ${cell.inCurrentMonth ? '' : 'opacity-70'}`}
                       >
                         {item.kind === 'assignment' ? (
-                          <AssignmentCalendarPreview
-                            weekLabel={item.weekLabel}
-                            cycleName={item.cycleName}
-                            eventName={item.eventName}
-                            categoryLabel={item.categoryLabel}
-                            blockCode={item.blockCode}
-                          />
+                          <>
+                            <span className="block truncate sm:hidden">{item.eventName}</span>
+                            <span className="hidden sm:block"><AssignmentCalendarPreview weekLabel={item.weekLabel} cycleName={item.cycleName} eventName={item.eventName} categoryLabel={item.categoryLabel} blockCode={item.blockCode} /></span>
+                          </>
                         ) : (
                           <>
                             <div className="truncate">{item.previewTop}</div>
-                            {item.previewBottom ? <div className="mt-0.5 truncate">{item.previewBottom}</div> : null}
+                            {item.previewBottom ? <div className="mt-0.5 hidden truncate sm:block">{item.previewBottom}</div> : null}
                           </>
                         )}
                       </div>
                     ))}
-                    {cell.items.length > 2 ? (
-                      <div className="text-[11px] font-semibold text-slate-500">+{cell.items.length - 2} 筆</div>
-                    ) : null}
+                    {cell.items.length > 1 ? <div className="text-[10px] font-semibold text-slate-500 sm:hidden">+{cell.items.length - 1} 筆</div> : null}
+                    {cell.items.length > 2 ? <div className="hidden text-[11px] font-semibold text-slate-500 sm:block">+{cell.items.length - 2} 筆</div> : null}
                     {cell.items.length === 0 ? <div className="pt-4 text-[11px] text-slate-300">&nbsp;</div> : null}
                   </div>
                 </button>
@@ -921,7 +1025,7 @@ export function StudentCalendarPreview({ summary, href }: StudentCalendarPreview
   const currentTrainingDay = nextAssignment?.day_num ? `Day ${nextAssignment.day_num}` : '尚未設定'
 
   return (
-    <article className="lab-card overflow-hidden p-7 sm:p-8">
+    <article className="lab-card overflow-hidden p-4 sm:p-8">
       <div className="lab-section-heading lab-section-heading-flush flex-wrap items-end justify-between gap-3">
         <div>
           <p className="lab-eyebrow">Calendar Preview</p>
@@ -931,18 +1035,18 @@ export function StudentCalendarPreview({ summary, href }: StudentCalendarPreview
 
       <p className="lab-copy mt-4 px-1">首頁只保留本月摘要；需要完整查看課表、事件與回報時，再進入完整行事曆。</p>
 
-      <div className="mt-6 space-y-5">
+      <div className="mt-5 space-y-4 sm:mt-6 sm:space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="lab-badge bg-slate-100 text-slate-700">{monthLabel}</span>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <article className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4">
+          <article className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-3 py-3 sm:px-4 sm:py-4">
             <p className="lab-eyebrow">Assignments</p>
             <p className="mt-3 text-3xl font-bold text-slate-900">{monthlyAssignmentCount}</p>
             <p className="mt-2 text-sm text-slate-500">本月課表安排</p>
           </article>
-          <article className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4">
+          <article className="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-3 py-3 sm:px-4 sm:py-4">
             <p className="lab-eyebrow">Events</p>
             <p className="mt-3 text-3xl font-bold text-slate-900">{monthlyEventCount}</p>
             <p className="mt-2 text-sm text-slate-500">本月一般事件</p>
@@ -1001,7 +1105,7 @@ export function StudentCalendarPreview({ summary, href }: StudentCalendarPreview
   )
 }
 
-export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportScheduleProps) {
+export function StudentReportSchedule({ schedule, emptyMessage, reportApiBase, title = '我的完整行事曆', allowPersonalEvents = true, showWeekMarkerPanel = false }: StudentReportScheduleProps) {
   const initialDate = todayIso()
   const [scheduleState, setScheduleState] = useState(schedule)
   const [selectedDate, setSelectedDate] = useState(initialDate)
@@ -1031,6 +1135,7 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
     () => resolveWeekMarkers(selectedDate, scheduleState.weekMarkers),
     [scheduleState.weekMarkers, selectedDate],
   )
+  const primaryWeekMarker = selectedDateWeekMarkers[0] ?? null
   const weekMarkerLanes = useMemo(() => getWeekMarkerLanes(scheduleState.weekMarkers), [scheduleState.weekMarkers])
   const maxWeekMarkerLane = useMemo(
     () => Math.max(-1, ...Array.from(weekMarkerLanes.values())),
@@ -1121,11 +1226,11 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
 
   return (
     <div className="space-y-6">
-      <article className="lab-card overflow-hidden p-7 sm:p-8">
+      <article className="lab-card overflow-hidden p-4 sm:p-8">
         <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="lab-eyebrow">Calendar Planner</p>
-            <h2 className="lab-section-title mt-3">我的完整行事曆</h2>
+            <h2 className="lab-section-title mt-3">{title}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="lab-badge bg-white/90 text-slate-900">已選日期：{selectedDate}</span>
@@ -1133,9 +1238,28 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
           </div>
         </div>
 
-        <p className="lab-copy mt-5 px-1">用和教練端一致的月曆方式查看課表與一般事件，日期內容過多時可打開當日摘要框。</p>
+        <p className="lab-copy mt-5 hidden px-1 sm:block">用和教練端一致的月曆方式查看課表與一般事件，日期內容過多時可打開當日摘要框。</p>
 
-        <div className="mt-6">
+        {showWeekMarkerPanel ? (
+          <section className="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
+            <div className="rounded-[1.25rem] border border-slate-200 bg-white p-5 sm:p-6">
+              <p className="lab-eyebrow">Calendar Week Marker</p>
+              <h3 className="mt-3 text-xl font-bold text-slate-900">行事曆週期標示</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">週期由教練統一設定，團隊成員可在行事曆中查看所屬 Week。</p>
+              <p className="mt-3 text-sm font-semibold text-slate-600">已選週期範圍：{primaryWeekMarker ? `${primaryWeekMarker.startDate} ～ ${primaryWeekMarker.endDate}` : '尚未設定週期'}</p>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_0.6fr_1.8fr_auto]">
+                <label className="grid gap-2 text-sm font-semibold text-slate-700">開始日期<input readOnly className="lab-input" value={primaryWeekMarker?.startDate ?? selectedDate} /></label>
+                <label className="grid gap-2 text-sm font-semibold text-slate-700">結束日期<input readOnly className="lab-input" value={primaryWeekMarker?.endDate ?? selectedDate} /></label>
+                <label className="grid gap-2 text-sm font-semibold text-slate-700">Week<input readOnly className="lab-input" value={primaryWeekMarker?.weekNum ?? '1'} /></label>
+                <label className="grid gap-2 text-sm font-semibold text-slate-700">備註<input readOnly className="lab-input" value={primaryWeekMarker?.note ?? '尚未設定'} /></label>
+                <div className="flex items-end"><span className="lab-btn-secondary w-full !cursor-default !opacity-70">教練設定</span></div>
+              </div>
+              <div className="mt-5"><p className="text-sm font-semibold text-slate-700">週期顏色</p><div className="mt-3 flex flex-wrap gap-2">{WEEK_MARKER_COLORS.map((color) => <span key={color.key} className={`lab-badge ${color.chipClass} ${primaryWeekMarker?.colorKey === color.key ? 'ring-2 ring-slate-500 ring-offset-2' : ''}`}>{color.name}{primaryWeekMarker?.colorKey === color.key ? ' ✓' : ''}</span>)}</div></div>
+            </div>
+          </section>
+        ) : null}
+
+        <div className="mt-4 -mx-4 sm:mx-0 sm:mt-6">
           <CalendarMonthGrid
             visibleMonth={visibleMonth}
             monthDays={monthDays}
@@ -1150,7 +1274,7 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
       </article>
 
       <section className="space-y-6">
-        <article ref={detailSectionRef} className="lab-card overflow-hidden p-7 sm:p-8">
+        <article ref={detailSectionRef} className="lab-card overflow-hidden p-4 sm:p-8">
           <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="lab-eyebrow">Selected Day</p>
@@ -1172,7 +1296,7 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
           <div className="mt-6 space-y-4">
             {selectedDateAssignments.map((assignment) => (
               <div key={assignment.id} id={`student-assignment-detail-${assignment.id}`}>
-                <StudentAssignmentCard assignment={assignment} onSaved={updateAssignmentRows} forceOpen={highlightedAssignmentId === assignment.id} />
+                <StudentAssignmentCard assignment={assignment} onSaved={updateAssignmentRows} forceOpen={highlightedAssignmentId === assignment.id} reportApiBase={reportApiBase} />
               </div>
             ))}
             {selectedDateEvents.map((event) => (
@@ -1186,7 +1310,7 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
           </div>
         </article>
 
-        <article className="lab-card overflow-hidden p-7 sm:p-8">
+        {allowPersonalEvents ? <article className="lab-card overflow-hidden p-4 sm:p-8">
           <div className="lab-section-heading lab-section-heading-flush !p-0">
             <button
               type="button"
@@ -1240,7 +1364,7 @@ export function StudentReportSchedule({ schedule, emptyMessage }: StudentReportS
 
           {error ? <p className="mt-5 rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
           {message ? <p className="mt-5 rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</p> : null}
-        </article>
+        </article> : null}
       </section>
 
       {isDayModalOpen ? (

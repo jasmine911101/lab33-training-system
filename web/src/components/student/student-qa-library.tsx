@@ -48,13 +48,16 @@ export function StudentQaLibrary({ entries }: { entries: QaEntry[] }) {
 
   return (
     <section className="lab-card overflow-hidden p-7 sm:p-8">
-      <div className="lab-section-heading lab-section-heading-flush flex-col gap-4">
+      <div className="lab-section-heading lab-section-heading-flush flex-col gap-3 !px-4 !py-4 sm:gap-4 sm:!px-6 sm:!py-6">
         <div>
           <p className="lab-eyebrow">Video Answers</p>
-          <h1 className="lab-section-title mt-3">Q&A 庫</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300">以編號或關鍵字搜尋，選擇題目後即可開啟教練準備的影片解答。</p>
+          <h1 className="lab-section-title mt-2 sm:mt-3">Q&A 庫</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:mt-3 sm:leading-7">
+            <span className="sm:hidden">搜尋編號或問題關鍵字，即可查看影片解答。</span>
+            <span className="hidden sm:inline">以編號或關鍵字搜尋，選擇題目後即可開啟教練準備的影片解答。</span>
+          </p>
         </div>
-        <label className="mt-6 block max-w-2xl" htmlFor="student-qa-search">
+        <label className="mt-3 block max-w-2xl sm:mt-6" htmlFor="student-qa-search">
           <span className="sr-only">搜尋 Q&A 編號或問題</span>
           <input id="student-qa-search" name="qa-search" autoComplete="off" className="lab-input bg-white text-slate-900" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="輸入 1、2、3… 或問題關鍵字…" />
         </label>

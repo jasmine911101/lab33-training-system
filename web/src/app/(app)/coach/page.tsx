@@ -57,6 +57,8 @@ export default async function CoachHomePage() {
   }
 
   const managementSnapshot = await getCoachManagementSnapshot(coachProfile)
+  // 批次建立的團隊隊員使用專屬網域，只在「團隊課表」中管理，避免混入一般學員列表。
+  const generalAthletes = managementSnapshot.athletes.filter((athlete) => !athlete.email?.endsWith('@team.lab33.local'))
 
   return (
     <AppShell
@@ -73,7 +75,7 @@ export default async function CoachHomePage() {
         userEmail={context.user.email}
         coachName={coachProfile.name ?? coachProfile.email ?? null}
         currentCoachId={coachProfile.id}
-        initialAthletes={managementSnapshot.athletes}
+        initialAthletes={generalAthletes}
         initialCoaches={managementSnapshot.coaches}
         assignableCoaches={managementSnapshot.assignableCoaches}
         isHeadCoach={coachProfile.is_head_coach === true}

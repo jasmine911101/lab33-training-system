@@ -545,6 +545,7 @@ export async function importBlockTemplatesForCoach(
 
 export async function deleteBlockTemplateForCoach(
   blockId: number,
+  options?: { removeTeamAssignments?: boolean },
 ): Promise<AdminMutationResult<{ blockId: number }>> {
   const { admin, error } = await ensureAdminClient()
   if (!admin) return { error: error ?? '無法執行板塊刪除。' }
@@ -561,6 +562,34 @@ export async function deleteBlockTemplateForCoach(
 
   if (!blockRow) {
     return { error: '找不到要刪除的板塊。' }
+  }
+
+  // 團隊課表會直接參照板塊模板。預設先阻擋刪除；使用者明確確認後，
+  // 才一併移除相關團隊課表，避免資料庫外鍵錯誤直接顯示給教練。
+  const { count: sharedAssignmentCount, error: sharedAssignmentsError } = await admin
+    .from('shared_training_assignments')
+    .select('id', { count: 'exact', head: true })
+    .eq('block_id', blockId)
+
+  if (sharedAssignmentsError) {
+    return { error: '目前無法確認此板塊是否仍被團隊課表使用，請稍後再試。' }
+  }
+
+  if ((sharedAssignmentCount ?? 0) > 0 && !options?.removeTeamAssignments) {
+    return {
+      error: `此板塊仍被 ${sharedAssignmentCount} 筆團隊課表使用。為避免影響團隊成員的課表，請先到「團隊課表」刪除或更換相關安排後，再刪除此板塊。`,
+    }
+  }
+
+  if ((sharedAssignmentCount ?? 0) > 0) {
+    const { error: deleteSharedAssignmentsError } = await admin
+      .from('shared_training_assignments')
+      .delete()
+      .eq('block_id', blockId)
+
+    if (deleteSharedAssignmentsError) {
+      return { error: '無法移除使用此板塊的團隊課表，請稍後再試。' }
+    }
   }
 
   const { data: athleteBlocks, error: athleteBlocksError } = await admin
@@ -607,6 +636,8 @@ export async function deleteBlockTemplateForCoach(
 
   return {
     data: { blockId },
-    message: '已刪除板塊，並移除相關的學員課表與詳細內容。',
+    message: sharedAssignmentCount
+      ? `已刪除板塊、相關個人課表，以及 ${sharedAssignmentCount} 筆團隊課表安排。`
+      : '已刪除板塊與相關的個人課表內容。',
   }
 }

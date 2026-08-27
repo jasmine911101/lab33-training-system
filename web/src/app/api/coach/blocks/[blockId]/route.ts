@@ -63,7 +63,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ blockId: string }> },
 ) {
   const { context, response } = await requireCoachApiContext()
@@ -77,7 +77,12 @@ export async function DELETE(
     return NextResponse.json({ error: '板塊 ID 不正確。' }, { status: 400 })
   }
 
-  const result = await deleteBlockTemplateForCoach(parsedBlockId)
+  const body = await request.json().catch(() => null)
+  const removeTeamAssignments = Boolean(
+    body && typeof body === 'object' && (body as Record<string, unknown>).removeTeamAssignments,
+  )
+
+  const result = await deleteBlockTemplateForCoach(parsedBlockId, { removeTeamAssignments })
   if (result.error || !result.data) {
     return NextResponse.json({ error: result.error ?? '刪除板塊失敗。' }, { status: 400 })
   }

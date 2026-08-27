@@ -3,6 +3,7 @@ import { ProfileStatusCard } from '@/components/auth/profile-status-card'
 import { StudentReportSchedule } from '@/components/schedule/student-report-schedule'
 import { requireStudentAccess } from '@/lib/auth/roles'
 import { getAthleteScheduleBundle } from '@/services/schedule'
+import { getStudentTeamScheduleBundle } from '@/services/team-training'
 
 export default async function StudentCalendarPage() {
   const context = await requireStudentAccess('/student/login')
@@ -10,7 +11,7 @@ export default async function StudentCalendarPage() {
 
   if (!studentProfile) {
     return (
-      <div className="lab-page px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="lab-page px-3 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
         <div className="mx-auto w-full max-w-4xl">
           <ProfileStatusCard
             title="找不到對應的 athlete profile"
@@ -27,7 +28,7 @@ export default async function StudentCalendarPage() {
 
   if (requiresPasswordReset) {
     return (
-      <div className="lab-page px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="lab-page px-3 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
         <div className="mx-auto w-full max-w-2xl">
           <PasswordUpdateForm
             athleteId={studentProfile.id}
@@ -42,12 +43,19 @@ export default async function StudentCalendarPage() {
     )
   }
 
-  const schedule = await getAthleteScheduleBundle(studentProfile.id)
+  // 團隊帳號沿用一般學員的完整行事曆；只將資料換成團隊共用課表。
+  const teamSchedule = await getStudentTeamScheduleBundle(studentProfile.id)
+  const isTeamAthlete = teamSchedule.assignments.length > 0
+  const schedule = isTeamAthlete ? teamSchedule : await getAthleteScheduleBundle(studentProfile.id)
 
   return (
-    <div className="lab-page px-4 pb-8 pt-4 sm:px-6 lg:px-8 lg:pb-10 lg:pt-6">
+    <div className="lab-page px-3 pb-6 pt-3 sm:px-6 sm:pb-8 sm:pt-4 lg:px-8 lg:pb-10 lg:pt-6">
       <div className="mx-auto w-full max-w-[1600px]">
-        <StudentReportSchedule schedule={schedule} emptyMessage="目前還沒有被安排任何課表或一般事件。" />
+        <StudentReportSchedule
+          schedule={schedule}
+          emptyMessage={isTeamAthlete ? '目前還沒有被安排任何團隊課表。' : '目前還沒有被安排任何課表或一般事件。'}
+          reportApiBase={isTeamAthlete ? '/api/student/team-assignments' : undefined}
+        />
       </div>
     </div>
   )

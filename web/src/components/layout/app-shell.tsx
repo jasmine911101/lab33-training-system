@@ -26,6 +26,7 @@ function getNavItems(role: Exclude<AppRole, 'unknown'>): NavItem[] {
   if (role === 'coach') {
     return [
       { href: '/coach', label: '學員管理', shortLabel: '學員', icon: 'A' },
+      { href: '/coach/teams', label: '團隊課表', shortLabel: '團隊', icon: 'T' },
       { href: '/coach/blocks', label: '板塊管理', shortLabel: '板塊', icon: 'B' },
       { href: '/coach/qa', label: 'Q&A 庫', shortLabel: 'Q&A', icon: 'Q' },
       { href: '/', label: '網站首頁', shortLabel: '首頁', icon: 'L' },
@@ -102,9 +103,13 @@ export function AppShell({ title, description, role, userEmail, roleLabel, curre
 
         <div className="min-w-0">
           <header className="lab-mobile-topbar">
-            <Link href="/" aria-label="LAB33 首頁"><BrandLogo className="w-24" priority /></Link>
-            <h1 className="lab-page-title !rounded-xl !px-3 !py-2 text-2xl">{title}</h1>
-            <span className={role === 'coach' ? 'lab-badge-primary' : 'lab-badge-info'}>{roleLabel}</span>
+            <Link href="/" className="shrink-0" aria-label="LAB33 首頁">
+              <BrandLogo className="w-24" priority />
+            </Link>
+            <div className="min-w-0 text-right">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-400">LAB33 Training</p>
+              <p className="mt-0.5 text-sm font-bold text-slate-800">{role === 'coach' ? '教練端' : '學員端'}</p>
+            </div>
           </header>
 
           {hideHeaderCard ? null : (

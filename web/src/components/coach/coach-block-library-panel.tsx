@@ -126,6 +126,18 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit) {
   return (payload ?? {}) as T & { message?: string }
 }
 
+function readableBlockDeleteError(error: unknown) {
+  const message = error instanceof Error ? error.message : ''
+  if (/shared_training_assignments|foreign key constraint/i.test(message)) {
+    return '此板塊仍被團隊課表使用。請先到「團隊課表」刪除或更換相關安排後，再刪除此板塊。'
+  }
+  return message || '刪除板塊失敗，請稍後再試。'
+}
+
+function canRemoveRelatedTeamAssignments(message: string | undefined) {
+  return Boolean(message?.includes('團隊課表使用'))
+}
+
 function BlockDetailTable({ block }: { block: BlockTemplateRecord }) {
   if (block.sections.length === 0) {
     return <div className="lab-card-muted px-4 py-4 text-sm text-slate-600">這個板塊目前沒有詳細內容。</div>
@@ -555,14 +567,14 @@ export function CoachBlockLibraryPanel({ initialBlocks, title = '板塊內容', 
     }
   }
 
-  async function handleDeleteBlock(block: BlockTemplateRecord) {
+  async function handleDeleteBlock(block: BlockTemplateRecord, removeTeamAssignments = false) {
     setDeletingBlockId(block.id)
     clearBlockFeedback(block.id)
 
     try {
       const payload = await requestJson<{ blockId: number; message?: string }>(`/api/coach/blocks/${block.id}`, {
         method: 'DELETE',
-        body: JSON.stringify({}),
+        body: JSON.stringify({ removeTeamAssignments }),
       })
 
       setBlocks((current) => current.filter((entry) => entry.id !== payload.blockId))
@@ -576,7 +588,7 @@ export function CoachBlockLibraryPanel({ initialBlocks, title = '板塊內容', 
     } catch (requestError) {
       setActionError((current) => ({
         ...current,
-        [block.id]: requestError instanceof Error ? requestError.message : '刪除板塊失敗。',
+        [block.id]: readableBlockDeleteError(requestError),
       }))
     } finally {
       setDeletingBlockId(null)
@@ -700,7 +712,7 @@ export function CoachBlockLibraryPanel({ initialBlocks, title = '板塊內容', 
                         {confirmDeleteId === block.id ? (
                           <div className="rounded-[1rem] border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
                             <p className="font-semibold">確認要刪除 {blockLabel(block)} 嗎？</p>
-                            <p className="mt-2">這只會刪除 block template 本身與它的 sections / exercises，不會改動已安排給學員的 snapshot。</p>
+                            <p className="mt-2 leading-6">刪除後會移除板塊、動作內容與使用此板塊的個人課表。若板塊正在被團隊課表使用，系統會要求你先到「團隊課表」更換或刪除該安排；此操作無法復原。</p>
                             <div className="mt-4 flex flex-wrap gap-3">
                               <button
                                 type="button"
@@ -717,7 +729,21 @@ export function CoachBlockLibraryPanel({ initialBlocks, title = '板塊內容', 
                           </div>
                         ) : null}
 
-                        {actionError[block.id] ? <p className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{actionError[block.id]}</p> : null}
+                        {actionError[block.id] ? (
+                          <div className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                            <p>{actionError[block.id]}</p>
+                            {canRemoveRelatedTeamAssignments(actionError[block.id]) ? (
+                              <button
+                                type="button"
+                                className="lab-btn-primary mt-3 !min-h-10 px-4 py-2 text-sm"
+                                disabled={deletingBlockId === block.id}
+                                onClick={() => void handleDeleteBlock(block, true)}
+                              >
+                                {deletingBlockId === block.id ? '刪除中...' : '仍要刪除團隊課表並刪除板塊'}
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
                         {actionMessage[block.id] ? <p className="rounded-[1rem] bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{actionMessage[block.id]}</p> : null}
 
                         <BlockDetailTable block={block} />

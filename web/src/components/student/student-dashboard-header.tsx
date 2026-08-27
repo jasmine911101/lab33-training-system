@@ -13,15 +13,6 @@ type StudentDashboardHeaderProps = {
   allowPasswordManagement?: boolean
 }
 
-function SummaryStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex min-h-[3.5rem] min-w-[9.5rem] items-center gap-2 rounded-[0.9rem] bg-slate-50 px-4 py-2.5 shadow-[inset_0_0_0_1px_rgba(226,232,240,0.7)]">
-      <span className="shrink-0 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-slate-400">{label}：</span>
-      <span className="truncate text-sm font-semibold text-slate-900">{value}</span>
-    </div>
-  )
-}
-
 export function StudentDashboardHeader({
   athleteId,
   studentName,
@@ -35,18 +26,17 @@ export function StudentDashboardHeader({
 
   return (
     <>
-      <section className="lab-card overflow-hidden p-7 sm:p-8">
-        <div className="flex flex-col gap-4">
-          <div className="lab-section-heading lab-section-heading-flush flex-col gap-4 xl:flex-row xl:items-start xl:justify-between xl:gap-6">
+      <section className="lab-card overflow-hidden">
+        <div className="lab-section-heading !rounded-none !border-x-0 !border-t-0 flex-col gap-4 sm:gap-5 xl:flex-row xl:items-start xl:justify-between xl:gap-6">
             <div className="min-w-0 max-w-3xl">
-              <p className="lab-eyebrow">Student Dashboard</p>
-              <h2 className="lab-section-title mt-3">我的訓練</h2>
+              <p className="lab-eyebrow hidden sm:block">Student Dashboard</p>
+              <h2 className="lab-section-title sm:mt-3">我的訓練</h2>
             </div>
 
-            <div className="flex flex-wrap justify-start gap-3 xl:justify-end">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-start sm:gap-3 xl:justify-end">
               <button
                 type="button"
-                className="lab-btn-secondary !min-h-11 min-w-[7.5rem] border-slate-200 bg-slate-50 px-5 py-2.5 text-sm font-bold shadow-none"
+                className="lab-btn-secondary !min-h-11 min-w-0 border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold shadow-none sm:min-w-[7.5rem] sm:px-5"
                 onClick={() => setIsProfileOpen(true)}
               >
                 學員資料
@@ -54,21 +44,20 @@ export function StudentDashboardHeader({
               {allowPasswordManagement ? (
                 <button
                   type="button"
-                  className="lab-btn-secondary !min-h-11 min-w-[8.5rem] border-slate-200 bg-slate-50 px-5 py-2.5 text-sm font-bold shadow-none"
+                  className="lab-btn-secondary !min-h-11 min-w-0 border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold shadow-none sm:min-w-[8.5rem] sm:px-5"
                   onClick={() => setIsPasswordOpen(true)}
                 >
                   修改密碼
                 </button>
-              ) : null}
+                ) : null}
             </div>
-          </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            <span className={mustChangePassword ? 'lab-badge-warning' : 'lab-badge-info'}>{mustChangePassword ? '需更新密碼' : '學員'}</span>
-            <SummaryStat label="Sport" value={sport ?? '-'} />
-          </div>
-
         </div>
+        {mustChangePassword || sport ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3 sm:px-6">
+            <span className={mustChangePassword ? 'lab-badge-warning' : 'lab-badge-info'}>{mustChangePassword ? '需更新密碼' : '學員'}</span>
+            {sport ? <span className="lab-badge bg-white text-slate-600">運動項目：{sport}</span> : null}
+          </div>
+        ) : null}
       </section>
 
       {isProfileOpen ? (

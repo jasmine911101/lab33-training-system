@@ -5,6 +5,7 @@ const scriptSource = ["script-src 'self' 'unsafe-inline'", ...(process.env.NODE_
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  devIndicators: false,
   turbopack: {
     root: path.resolve(__dirname),
   },
