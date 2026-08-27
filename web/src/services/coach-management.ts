@@ -307,6 +307,7 @@ export async function createAthleteForCoach(
     sport?: string
     level?: string
     assignedCoachId?: number | null
+    createdForTeamId?: number | null
   },
 ): Promise<AdminMutationResult<ManagedAthleteRecord>> {
   const { admin, error: adminError } = await ensureServiceRoleClient()
@@ -359,6 +360,7 @@ export async function createAthleteForCoach(
         level,
         user_id: authUserId,
         must_change_password: authAccountStatus === 'created',
+        created_for_team_id: payload.createdForTeamId ?? null,
       })
       .select('id')
       .single()

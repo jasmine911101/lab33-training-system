@@ -9,6 +9,7 @@ import { getTaxonomySelectionSnapshot } from '@/services/block-taxonomy'
 
 type TeamRow = { id: number; name: string; description: string; created_by_coach_id: number }
 type MembershipRow = { id: number; team_id: number; athlete_id: number; is_active: boolean }
+type BatchAccountRow = { id: number; name: string | null; email: string | null; created_for_team_id: number | null }
 type AssignmentRow = { id: number; team_id: number; block_id: number; title: string; start_date: string; end_date: string; notes: string }
 type MembershipWithTeamRow = { team_id: number; shared_training_teams: { id: number; name: string | null }[] | null }
 type ExerciseRow = { id: number; block_id: number; section_id: number | null; exercise_name: string | null; sets: string | null; reps_or_time: string | null; intensity: string | null; weight: string | null; rest: string | null; notes: string | null; order_num: number | null }
@@ -60,10 +61,31 @@ export async function getCoachTeamPageData(coach: CoachProfile) {
   const ids = teamRows.map((team) => team.id)
   const { data: memberships, error: membershipsError } = ids.length ? await supabase.from('shared_training_memberships').select('id, team_id, athlete_id, is_active').in('team_id', ids) : { data: [], error: null }
   if (membershipsError) throw membershipsError
+  const { data: batchAccountRows, error: batchAccountError } = ids.length
+    ? await supabase.from('athletes').select('id, name, email, created_for_team_id').in('created_for_team_id', ids)
+    : { data: [], error: null }
+  if (batchAccountError) throw batchAccountError
+  const batchAccountIds = (batchAccountRows ?? []).map((account) => Number(account.id)).filter(Number.isFinite)
+  const { data: batchMemberships, error: batchMembershipError } = batchAccountIds.length
+    ? await supabase.from('shared_training_memberships').select('team_id, athlete_id, is_active').in('athlete_id', batchAccountIds).eq('is_active', true)
+    : { data: [], error: null }
+  if (batchMembershipError) throw batchMembershipError
+  const batchMembershipsByAthlete = new Map<number, number[]>()
+  for (const membership of batchMemberships ?? []) {
+    const athleteId = Number(membership.athlete_id)
+    batchMembershipsByAthlete.set(athleteId, [...(batchMembershipsByAthlete.get(athleteId) ?? []), Number(membership.team_id)])
+  }
   const snapshot = await getCoachManagementSnapshot(coach)
   const athleteById = new Map(snapshot.athletes.map((athlete) => [athlete.id, athlete]))
   return {
-    teams: teamRows.map((team) => ({ ...team, members: ((memberships ?? []) as MembershipRow[]).filter((m) => m.team_id === team.id && m.is_active).map((m) => athleteById.get(m.athlete_id)).filter((athlete): athlete is (typeof snapshot.athletes)[number] => Boolean(athlete)) })),
+    teams: teamRows.map((team) => ({
+      ...team,
+      members: ((memberships ?? []) as MembershipRow[]).filter((m) => m.team_id === team.id && m.is_active).map((m) => athleteById.get(m.athlete_id)).filter((athlete): athlete is (typeof snapshot.athletes)[number] => Boolean(athlete)),
+      batchAccounts: ((batchAccountRows ?? []) as BatchAccountRow[])
+        .filter((account) => Number(account.created_for_team_id) === team.id)
+        .filter((account) => (batchMembershipsByAthlete.get(Number(account.id)) ?? []).every((membershipTeamId) => membershipTeamId === team.id))
+        .map((account) => ({ id: Number(account.id), name: account.name, email: account.email })),
+    })),
     athletes: snapshot.athletes,
     blocks: await getBlockCatalog(),
   }
@@ -75,6 +97,48 @@ export async function createTeam(coach: CoachProfile, payload: { name: string; d
   const supabase = await admin()
   const { error } = await supabase.from('shared_training_teams').insert({ name, description: text(payload.description), created_by_coach_id: coach.id })
   return error ? { error: error.message } : { message: '已建立團隊。' }
+}
+
+export async function deleteTeam(coach: CoachProfile, teamId: number, confirmationName: string, selectedBatchAccountIds: number[] = []) {
+  const team = await managedTeam(coach, teamId)
+  if (!team) return { error: '找不到可管理的團隊。' }
+  if (text(confirmationName) !== team.name) return { error: '請完整輸入團隊名稱後再刪除。' }
+
+  const supabase = await admin()
+  const selectedIds = [...new Set(selectedBatchAccountIds.filter(Number.isFinite))]
+  let deletedAccountCount = 0
+
+  if (selectedIds.length) {
+    const { data: candidates, error: candidateError } = await supabase
+      .from('athletes')
+      .select('id')
+      .eq('created_for_team_id', team.id)
+      .in('id', selectedIds)
+    if (candidateError) return { error: `讀取團隊批次帳號失敗：${candidateError.message}` }
+
+    const candidateIds = (candidates ?? []).map((athlete) => Number(athlete.id)).filter(Number.isFinite)
+    if (candidateIds.length !== selectedIds.length) return { error: '部分選取帳號已不屬於此團隊批次建立，無法刪除。請重新開啟確認視窗。' }
+    const { data: otherMemberships, error: membershipError } = await supabase
+      .from('shared_training_memberships')
+      .select('athlete_id')
+      .in('athlete_id', candidateIds)
+      .eq('is_active', true)
+      .neq('team_id', team.id)
+    if (membershipError) return { error: `檢查批次帳號所屬團隊失敗：${membershipError.message}` }
+    if ((otherMemberships ?? []).length) return { error: '部分選取帳號已加入其他團隊，系統已保護該帳號。請重新開啟確認視窗。' }
+
+    for (const athleteId of candidateIds) {
+      const result = await deleteTeamMemberAccount(coach, team.id, athleteId)
+      if (result.error) return { error: `刪除團隊批次帳號失敗：${result.error}` }
+      deletedAccountCount += 1
+    }
+  }
+
+  // 子資料表皆以 team_id 設定 ON DELETE CASCADE；刪除團隊只會清理其共享資料，不會刪除運動員、帳號或板塊模板。
+  const { error } = await supabase.from('shared_training_teams').delete().eq('id', team.id)
+  if (error) return { error: error.message }
+  const accountMessage = deletedAccountCount ? `已刪除 ${deletedAccountCount} 個選取的團隊批次帳號及其個人資料與訓練紀錄。` : '隊員帳號已保留。'
+  return { message: `已刪除團隊「${team.name}」及其共享課表資料；${accountMessage}模板已保留。` }
 }
 
 export async function addTeamMembers(coach: CoachProfile, teamId: number, athleteIds: number[]) {
@@ -199,6 +263,7 @@ export async function createTeamMemberAccounts(
       sport: '',
       level: '',
       assignedCoachId: coach.id,
+      createdForTeamId: teamId,
     })
     if (result.error || !result.data) {
       if (athleteIds.length) await addTeamMembers(coach, teamId, athleteIds)
