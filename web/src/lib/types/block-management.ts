@@ -4,7 +4,7 @@ export const MANUAL_BLOCK_SECTION_NAMES = [
   '活化',
   '動態熱身',
   '增強/彈震式訓練',
-  '重量訓練',
+  '主要運動',
   '輔助訓練',
   '恢復訓練',
 ] as const
