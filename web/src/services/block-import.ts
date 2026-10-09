@@ -12,7 +12,7 @@ const BLOCK_SECTION_NAMES = [
   '活化',
   '動態熱身',
   '增強/彈震式訓練',
-  '重量訓練',
+  '主要運動',
   '輔助訓練',
   '恢復訓練',
 ] as const
@@ -47,6 +47,7 @@ function normalizeSectionName(value: string) {
   if (!value) return ''
   if (value.includes('自我筋膜')) return '自我筋膜滾動'
   if (value.includes('增強') || value.includes('彈震')) return '增強/彈震式訓練'
+  if (value === '重量訓練') return '主要運動'
   return BLOCK_SECTION_NAMES.find((section) => section === value) ?? ''
 }
 
