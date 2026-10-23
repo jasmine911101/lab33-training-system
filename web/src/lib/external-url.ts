@@ -1,19 +1,27 @@
 export function normalizeExternalUrl(value: string | null | undefined) {
-  const raw = String(value ?? '').trim()
-  if (!raw) return null
+  // 先把沒填的值當成空字串，再移除頭尾空白。
+  const trimmedUrl = String(value ?? '').trim()
+  if (!trimmedUrl) {
+    return null
+  }
 
-  const withProtocol = raw.startsWith('//')
-    ? `https:${raw}`
-    : /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(raw)
-      ? raw
-      : raw.includes('.') && !raw.includes(' ')
-        ? `https://${raw}`
-        : ''
+  // 依照原本的順序判斷網址；只替省略協定的網址補上 https。
+  let urlWithProtocol = ''
+  if (trimmedUrl.startsWith('//')) {
+    urlWithProtocol = `https:${trimmedUrl}`
+  } else if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmedUrl)) {
+    urlWithProtocol = trimmedUrl
+  } else if (trimmedUrl.includes('.') && !trimmedUrl.includes(' ')) {
+    urlWithProtocol = `https://${trimmedUrl}`
+  }
 
-  if (!withProtocol) return null
+  if (!urlWithProtocol) {
+    return null
+  }
 
   try {
-    const url = new URL(withProtocol)
+    // URL 會檢查格式；即使能解析，仍然只接受 http 與 https。
+    const url = new URL(urlWithProtocol)
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
       return null
     }
