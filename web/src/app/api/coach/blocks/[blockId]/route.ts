@@ -33,7 +33,10 @@ export async function PATCH(
     goal: String(bodyRecord.goal ?? ''),
     trainingElement: String(bodyRecord.trainingElement ?? ''),
     description: String(bodyRecord.description ?? ''),
-    trainingCategoryId: Number.isFinite(trainingCategoryId) ? trainingCategoryId : null,
+    // 編輯內容時可能不會傳分類；沒有傳送就保留原分類，null 才代表清空。
+    ...(bodyRecord.trainingCategoryId !== undefined
+      ? { trainingCategoryId: Number.isFinite(trainingCategoryId) ? trainingCategoryId : null }
+      : {}),
     sections: sectionRows.map((section) => ({
       section_name: String(section.section_name ?? ''),
       exercises: Array.isArray(section.exercises)

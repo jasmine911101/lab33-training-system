@@ -487,7 +487,10 @@ export async function updateBlockTemplateForCoach(
       goal: cleanText(payload.goal),
       training_element: cleanText(payload.trainingElement),
       description: cleanText(payload.description) || '由手動模板建立',
-      training_category_id: typeof payload.trainingCategoryId === 'number' ? payload.trainingCategoryId : null,
+      // 沒有指定分類時，不更新這個欄位，避免單純編輯內容就掉到未分類。
+      ...(payload.trainingCategoryId !== undefined
+        ? { training_category_id: typeof payload.trainingCategoryId === 'number' ? payload.trainingCategoryId : null }
+        : {}),
     })
     .eq('id', blockId)
 
