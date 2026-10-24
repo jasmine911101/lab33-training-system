@@ -1,7 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
+import { BlockTransferForm } from '@/components/coach/block-transfer-form'
+import type { BlockTransferResult } from '@/lib/types/block-transfer'
 import { normalizeExternalUrl } from '@/lib/external-url'
 import type {
   BlockExerciseTemplateInput,
@@ -365,6 +369,9 @@ function BlockEditor({
 }
 
 export function CoachBlockLibraryPanel({ initialBlocks, title = '板塊內容', description = '顯示目前分類下的板塊內容。', badgeLabel }: Props) {
+  const router = useRouter()
+  const [transfer, setTransfer] = useState<{ blockId: number; mode: 'move' | 'copy' } | null>(null)
+  const [transferResult, setTransferResult] = useState<BlockTransferResult | null>(null)
   const [blocks, setBlocks] = useState(initialBlocks)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeBlockId, setActiveBlockId] = useState<number | null>(null)
@@ -614,11 +621,18 @@ export function CoachBlockLibraryPanel({ initialBlocks, title = '板塊內容', 
         <input
           className="lab-input"
           value={searchQuery}
+          disabled={transfer !== null}
           onChange={(event) => setSearchQuery(event.target.value)}
           placeholder="搜尋 Block Code、顯示名稱、週期目標、訓練元素或描述"
         />
       </div>
 
+      {transferResult ? (
+        <div role="status" aria-live="polite" className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <p className="break-words leading-6">{transferResult.message}</p>
+          <Link href={transferResult.targetPath} className="mt-2 inline-block font-semibold underline underline-offset-4">前往目標分類</Link>
+        </div>
+      ) : null}
       {filteredBlocks.length === 0 ? (
         <div className="lab-card-muted mt-6 px-5 py-6 text-sm text-slate-600">
           {blocks.length === 0 ? '目前這個分類底下還沒有板塊。' : '找不到符合搜尋條件的板塊。'}
@@ -634,6 +648,7 @@ export function CoachBlockLibraryPanel({ initialBlocks, title = '板塊內容', 
                 <div className="flex flex-col gap-3 px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
                   <button
                     type="button"
+                    disabled={transfer !== null}
                     onClick={() => handleOpenDetail(block.id)}
                     className={`flex-1 rounded-[1rem] px-3 py-3 text-left transition ${
                       isActive ? 'bg-orange-50 text-slate-900' : 'hover:bg-slate-50'
@@ -649,6 +664,7 @@ export function CoachBlockLibraryPanel({ initialBlocks, title = '板塊內容', 
                   <div className="flex flex-wrap gap-2 lg:justify-end">
                     <button
                       type="button"
+                      disabled={transfer !== null}
                       className={`lab-btn-secondary !min-h-10 px-4 py-2 text-sm ${isActive && !isEditing ? '!border-orange-300 !bg-orange-50 !text-orange-700' : ''}`}
                       onClick={() => handleOpenDetail(block.id)}
                     >
@@ -656,13 +672,27 @@ export function CoachBlockLibraryPanel({ initialBlocks, title = '板塊內容', 
                     </button>
                     <button
                       type="button"
+                      disabled={transfer !== null}
                       className={`lab-btn-secondary !min-h-10 px-4 py-2 text-sm ${isEditing ? '!border-orange-300 !bg-orange-50 !text-orange-700' : ''}`}
                       onClick={() => handleStartEdit(block)}
                     >
                       編輯
                     </button>
+                    {(['move', 'copy'] as const).map((mode) => (
+                      <button key={mode} type="button" className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
+                        disabled={transfer !== null || editingBlockId !== null || deletingBlockId !== null || savingBlockId !== null}
+                        title={editingBlockId !== null ? '請先儲存或取消編輯' : undefined}
+                        onClick={() => {
+                          setTransfer({ blockId: block.id, mode })
+                          setTransferResult(null)
+                          setConfirmDeleteId(null)
+                        }}>
+                        {mode === 'move' ? '移動' : '複製'}
+                      </button>
+                    ))}
                     <button
                       type="button"
+                      disabled={transfer !== null}
                       className="lab-btn-secondary !min-h-10 px-4 py-2 text-sm"
                       onClick={() => {
                         setActiveBlockId(block.id)
@@ -674,6 +704,16 @@ export function CoachBlockLibraryPanel({ initialBlocks, title = '板塊內容', 
                   </div>
                 </div>
 
+                {transfer?.blockId === block.id ? (
+                  <BlockTransferForm key={`${block.id}-${transfer.mode}`} block={block} mode={transfer.mode}
+                    onCancel={() => setTransfer(null)}
+                    onSuccess={(result) => {
+                      if (transfer.mode === 'move') setBlocks((current) => current.filter((entry) => entry.id !== block.id))
+                      setTransfer(null)
+                      setTransferResult(result)
+                      router.refresh()
+                    }} />
+                ) : null}
                 {isActive ? (
                   <div className="border-t border-slate-200 bg-slate-50/70 px-4 py-5 sm:px-5 sm:py-6">
                     {isEditing && draft ? (
